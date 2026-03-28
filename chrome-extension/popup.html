@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Domain Abuse Reporter</title>
+  <style>
+    body {
+      width: 350px;
+      padding: 16px;
+      font-family: Arial, sans-serif;
+    }
+    h2 {
+      margin: 0 0 16px 0;
+      font-size: 18px;
+      color: #1890ff;
+    }
+    .form-group {
+      margin-bottom: 12px;
+    }
+    label {
+      display: block;
+      margin-bottom: 4px;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    input, textarea {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #d9d9d9;
+      border-radius: 4px;
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+    textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background: #1890ff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      margin-top: 8px;
+    }
+    button:hover {
+      background: #096dd9;
+    }
+    button:disabled {
+      background: #d9d9d9;
+      cursor: not-allowed;
+    }
+    .status {
+      padding: 8px;
+      background: #f0f2f5;
+      border-radius: 4px;
+      font-size: 12px;
+      text-align: center;
+      margin-top: 12px;
+      color: #666;
+    }
+    .success {
+      background: #f6ffed;
+      color: #52c41a;
+    }
+  </style>
+</head>
+<body>
+  <h2>🛡️ Domain Abuse Reporter</h2>
+  
+  <div class="form-group">
+    <label>Domain:</label>
+    <input type="text" id="domain" placeholder="example.com">
+  </div>
+  
+  <div class="form-group">
+    <label>Reason:</label>
+    <textarea id="reason" placeholder="Describe the abuse..."></textarea>
+  </div>
+  
+  <div class="form-group">
+    <label>Email:</label>
+    <input type="email" id="email" placeholder="your@email.com">
+  </div>
+  
+  <button id="fillBtn">Fill Form on Current Page</button>
+  
+  <div id="status" class="status" style="display: none;"></div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

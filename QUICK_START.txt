@@ -1,0 +1,174 @@
+==========================================
+DOMAIN ABUSE REPORTER - QUICK START
+==========================================
+
+⚡ 5-MINUTE SETUP
+
+1. PREREQUISITES
+   ✓ Node.js 18+ installed
+   ✓ MongoDB running (port 27017)
+   ✓ Redis running (port 6379)
+
+2. INSTALL & SETUP
+
+Backend:
+cd backend
+npm install
+npm run seed:all
+npm run start:dev
+
+Frontend:
+cd frontend
+npm run dev
+
+3. ACCESS
+   Frontend: http://localhost:5173
+   Backend:  http://localhost:3000
+
+4. FIRST USE
+   - Register account
+   - Add domain
+   - Add proxy (optional)
+   - Click "Report All"
+
+==========================================
+NEW FEATURES OVERVIEW
+==========================================
+
+🔄 PROXY ROTATION
+   - Automatic IP rotation
+   - Failure detection
+   - 3-strike ban system
+
+🎭 ANTI-DETECTION
+   - Stealth browser
+   - Random user agents
+   - Human-like behavior
+   - Slow typing
+   - Random scrolling
+
+📸 SCREENSHOTS
+   - Auto-captured per report
+   - Saved in screenshots/
+   - Viewable in logs
+
+⏯️ QUEUE CONTROLS
+   - Pause/Resume processing
+   - Clean completed jobs
+   - Real-time status
+
+📊 ENHANCED MONITORING
+   - Proxy status dashboard
+   - Queue statistics
+   - Success/fail rates
+   - Report logs with details
+
+==========================================
+BASIC WORKFLOW
+==========================================
+
+1. ADD DOMAINS
+   Dashboard → "Add Domain" or "Bulk Import"
+
+2. ADD PROXIES (Optional but recommended)
+   Dashboard → "Proxy Management" → "Add Proxy"
+   
+   Example:
+   Host: 185.199.229.156
+   Port: 7492
+   Type: HTTP
+
+3. START REPORTING
+   Click "Report All Pending" or report individual domains
+   
+   System will:
+   - Use different proxy per job
+   - Rotate email accounts
+   - Simulate human behavior
+   - Capture screenshots
+   - Wait for manual captcha solving
+
+4. MONITOR PROGRESS
+   - Watch queue stats update
+   - Click "Logs" to see details
+   - View screenshots
+   - Check proxy usage
+
+==========================================
+KEY FEATURES
+==========================================
+
+✓ Proxy rotation (auto)
+✓ Email rotation (auto)
+✓ User agent randomization (auto)
+✓ Human simulation (auto)
+✓ Screenshot capture (auto)
+✓ Form auto-fill (auto)
+✓ Captcha solving (MANUAL - you do this!)
+✓ Queue management (pause/resume)
+✓ Real-time monitoring
+
+==========================================
+IMPORTANT NOTES
+==========================================
+
+⚠️ CAPTCHAS: You must solve them manually
+⚠️ PROXIES: Optional but highly recommended
+⚠️ HEADLESS: Set to false to see browser
+⚠️ RATE LIMIT: Use 1-2 concurrent jobs
+⚠️ ETHICS: Use only for legitimate abuse reporting
+
+==========================================
+KEYBOARD SHORTCUTS
+==========================================
+
+Ctrl + Enter = Report all pending domains
+
+==========================================
+SUPPORT FILES
+==========================================
+
+📄 ENHANCED_FEATURES.txt - Complete feature list
+📄 backend/SETUP.md - Detailed backend setup
+📄 README.md - Project overview
+
+==========================================
+COMMON ISSUES
+==========================================
+
+Problem: Browser doesn't open
+Solution: Set PUPPETEER_HEADLESS=false in .env
+
+Problem: Proxy connection fails
+Solution: Verify proxy host/port, check status
+
+Problem: Queue not processing
+Solution: Check Redis running, verify not paused
+
+Problem: Screenshots not saving
+Solution: Check screenshots/ folder exists
+
+==========================================
+PRODUCTION TIPS
+==========================================
+
+1. Use 20+ proxies for best results
+2. Limit concurrency to 1-2 jobs
+3. Add delays between jobs
+4. Monitor proxy ban rates
+5. Clean queue regularly
+6. Backup database daily
+
+==========================================
+READY TO START! 🚀
+==========================================
+
+1. Start MongoDB & Redis
+2. Run: npm run start:dev (backend)
+3. Run: npm run dev (frontend)
+4. Register & Login
+5. Add domains & proxies
+6. Click "Report All"
+7. Watch the magic happen!
+
+==========================================
