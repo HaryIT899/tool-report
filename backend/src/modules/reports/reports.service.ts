@@ -22,11 +22,21 @@ export class ReportsService {
   private filterServices(services: any[]): any[] {
     const onlyUrlRaw = (process.env.REPORT_ONLY_SERVICE_URL || '').trim();
     const onlyNameRaw = (process.env.REPORT_ONLY_SERVICE_NAME || '').trim().toLowerCase();
+    const excludeUrlRaw = (process.env.REPORT_EXCLUDE_SERVICE_URL || '').trim();
+    const excludeNameRaw = (process.env.REPORT_EXCLUDE_SERVICE_NAME || '').trim().toLowerCase();
     const onlyUrls = onlyUrlRaw
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
     const onlyNames = onlyNameRaw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const excludeUrls = excludeUrlRaw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const excludeNames = excludeNameRaw
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
@@ -63,6 +73,39 @@ export class ReportsService {
       filtered = filtered.filter((s) => {
         const n = String(s.name || '').toLowerCase();
         return onlyNames.some((x) => n.includes(x));
+      });
+    }
+    if (excludeUrls.length) {
+      filtered = filtered.filter((s) => {
+        const serviceUrl = String(s.reportUrl || '').toLowerCase();
+        let serviceHost = '';
+        try {
+          serviceHost = new URL(serviceUrl).hostname.toLowerCase();
+        } catch {
+          // ignore
+        }
+        return !excludeUrls.some((u) => {
+          const v = u.toLowerCase();
+          if (!v) return false;
+          if (serviceUrl.includes(v)) return true;
+          try {
+            const exclHost = new URL(v).hostname.toLowerCase();
+            if (exclHost && serviceHost) {
+              return serviceHost === exclHost || serviceHost.endsWith(`.${exclHost}`);
+            }
+          } catch {
+            if (serviceHost && v.includes('.')) {
+              return serviceHost === v || serviceHost.endsWith(`.${v}`);
+            }
+          }
+          return false;
+        });
+      });
+    }
+    if (excludeNames.length) {
+      filtered = filtered.filter((s) => {
+        const n = String(s.name || '').toLowerCase();
+        return !excludeNames.some((x) => n.includes(x));
       });
     }
     return filtered;

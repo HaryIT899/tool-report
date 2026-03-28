@@ -56,12 +56,12 @@ export class ReportServicesService {
       //   type: 'autofill_supported',
       //   active: true,
       // },
-      // {
-      //   name: 'Radix Abuse',
-      //   reportUrl: 'https://abuse.radix.website/',
-      //   type: 'autofill_supported',
-      //   active: true,
-      // },
+      {
+        name: 'Radix Abuse',
+        reportUrl: 'https://abuse.radix.website/',
+        type: 'autofill_supported',
+        active: true,
+      },
     ];
 
     await this.reportServiceModel.insertMany(services);
