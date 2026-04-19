@@ -9,6 +9,7 @@
     "activeTab"
   ],
   "host_permissions": [
+    "https://www.google.com/*",
     "https://search.google.com/*",
     "https://safebrowsing.google.com/*",
     "https://reportcontent.google.com/*",
@@ -21,6 +22,7 @@
   "content_scripts": [
     {
       "matches": [
+        "https://www.google.com/*",
         "https://search.google.com/search-console/report-spam*",
         "https://safebrowsing.google.com/safebrowsing/report_phish/*",
         "https://reportcontent.google.com/forms/*",
@@ -32,16 +34,6 @@
     }
   ],
   "action": {
-    "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    }
-  },
-  "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
+    "default_title": "Domain Abuse Reporter Helper"
   }
 }

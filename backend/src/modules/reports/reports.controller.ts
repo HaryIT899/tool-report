@@ -45,4 +45,32 @@ export class ReportsController {
   async cleanQueue() {
     return this.reportsService.cleanQueue();
   }
+
+  @Post('tool/domain/:domainId/service/:serviceId')
+  async runTool(
+    @Param('domainId') domainId: string,
+    @Param('serviceId') serviceId: string,
+    @Body() body: { email?: string; accountId?: string },
+    @Request() req,
+  ) {
+    return this.reportsService.runPuppeteerTool(domainId, serviceId, req.user.userId, body);
+  }
+
+  @Post('trigger')
+  async triggerReport(
+    @Body()
+    body: {
+      accountId?: string;
+      domainId: string;
+      serviceIds: string[];
+    },
+    @Request() req,
+  ) {
+    return this.reportsService.reportDomainWithAccount(
+      body.domainId,
+      body.serviceIds,
+      req.user.userId,
+      body.accountId,
+    );
+  }
 }

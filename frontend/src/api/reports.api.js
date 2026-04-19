@@ -9,4 +9,6 @@ export const reportsApi = {
   pauseQueue: () => api.post('/reports/queue/pause').then((r) => r.data),
   resumeQueue: () => api.post('/reports/queue/resume').then((r) => r.data),
   cleanQueue: () => api.post('/reports/queue/clean').then((r) => r.data),
+  runPuppeteerTool: (domainId, serviceId, payload) =>
+    api.post(`/reports/tool/domain/${domainId}/service/${serviceId}`, payload || {}).then((r) => r.data),
 };

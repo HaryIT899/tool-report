@@ -4,6 +4,7 @@ import { Job } from 'bullmq';
 import { REPORT_QUEUE, ReportJobData } from './report.queue';
 import { ReportLogsService } from '../report-logs/report-logs.service';
 import { PuppeteerAdvancedService } from '../puppeteer/puppeteer-advanced.service';
+import { PuppeteerSimpleService } from '../puppeteer/puppeteer-simple.service';
 import { ProxiesService } from '../proxies/proxies.service';
 import { DomainsService } from '../domains/domains.service';
 import { ReportServicesService } from '../report-services/report-services.service';
@@ -19,6 +20,7 @@ export class ReportProcessor extends WorkerHost {
   constructor(
     private reportLogsService: ReportLogsService,
     private puppeteerService: PuppeteerAdvancedService,
+    private puppeteerSimpleService: PuppeteerSimpleService,
     private proxiesService: ProxiesService,
     private domainsService: DomainsService,
     private reportServicesService: ReportServicesService,
@@ -27,8 +29,21 @@ export class ReportProcessor extends WorkerHost {
     super();
   }
 
+  private getRandomDelay(min: number, max: number): number {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   async process(job: Job<ReportJobData>): Promise<any> {
     this.logger.log(`Processing report job ${job.id} for domain ${job.data.domain}`);
+
+    // Random delay between jobs (3-10s)
+    const delayMs = this.getRandomDelay(3000, 10000);
+    this.logger.log(`Delaying ${delayMs}ms before starting job ${job.id}`);
+    await this.sleep(delayMs);
 
     const proxy = await this.proxiesService.getNextAvailableProxy();
 
@@ -66,8 +81,20 @@ export class ReportProcessor extends WorkerHost {
     );
 
     try {
-      const profilesRoot = process.env.PROFILES_DIR
-        ? path.resolve(process.env.PROFILES_DIR)
+      const configuredRaw = (process.env.PROFILES_DIR || '').trim();
+      const configured = configuredRaw.replace(/^"+|"+$/g, '');
+      const isWindowsLongPathPrefixOnly =
+        configured === '\\\\?' || configured === '\\\\?\\' || configured === '\\\\?\\\\';
+      const isWindowsLongPathButMissingTarget =
+        configured.startsWith('\\\\?\\') && configured.length <= '\\\\?\\'.length + 1;
+      const useConfigured =
+        !!configured &&
+        !isWindowsLongPathPrefixOnly &&
+        !isWindowsLongPathButMissingTarget &&
+        configured !== '\\?' &&
+        configured !== '\\?\\';
+      const profilesRoot = useConfigured
+        ? path.resolve(configured)
         : path.resolve(process.cwd(), 'profiles');
       await fs.promises.mkdir(profilesRoot, { recursive: true });
 
@@ -81,19 +108,44 @@ export class ReportProcessor extends WorkerHost {
       const maxAccountTries = Number(process.env.ACCOUNT_MAX_RETRY || 3);
       const tried: string[] = [];
       let lastAuthError: string | undefined;
-      let result: { screenshot?: string; error?: string } | undefined;
+      let result: { success?: boolean; error?: string; tabUrl?: string } | undefined;
+
+      // Build payload for extension
+      const payload = {
+        domain: job.data.domain,
+        reason: job.data.reason,
+        email: job.data.email,
+        // Add any additional fields needed by extension
+        name: job.data.email?.split('@')[0] || '',
+        // For Google DMCA
+        firstName: process.env.DMCA_FIRST_NAME || 'User',
+        lastName: process.env.DMCA_LAST_NAME || 'Demo',
+        company: process.env.DMCA_COMPANY || '',
+        signature: process.env.DMCA_FIRST_NAME + ' ' + process.env.DMCA_LAST_NAME || 'User Demo',
+        workDescription: job.data.reason,
+        authorizedUrl: process.env.DMCA_AUTHORIZED_URL || '',
+        infringingUrls: job.data.domain,
+        // For Cloudflare
+        title: process.env.CF_TITLE || '',
+        phone: process.env.CF_TELE || '',
+        // For Safe Browsing
+        urlToReport: job.data.domain.startsWith('http')
+          ? job.data.domain
+          : `https://${job.data.domain}`,
+        safeBrowsingThreatType: 'Tấn công phi kỹ thuật',
+        safeBrowsingThreatCategory: 'Lừa đảo qua mạng xã hội',
+        autoSubmit: process.env.AUTO_SUBMIT === 'true',
+      };
 
       if (!shouldUseAccount) {
         const profilePath = path.join(profilesRoot, 'profile_default');
         await fs.promises.mkdir(profilePath, { recursive: true });
-        result = await this.puppeteerService.openReportPage(
+        result = await this.puppeteerSimpleService.openPageWithPayload(
           {
-            domain: job.data.domain,
-            reason: job.data.reason,
-            email: job.data.email,
-            serviceId: job.data.serviceId,
-            proxy: proxy,
             profilePath,
+            reportUrl: targetService.reportUrl,
+            payload,
+            proxy,
           },
           async (event) => {
             await this.reportLogsService.appendEvent(
@@ -152,14 +204,16 @@ export class ReportProcessor extends WorkerHost {
             }
           }
 
-          result = await this.puppeteerService.openReportPage(
+          // Update payload with account email
+          payload.email = account.email;
+          payload.name = account.email.split('@')[0];
+
+          result = await this.puppeteerSimpleService.openPageWithPayload(
             {
-              domain: job.data.domain,
-              reason: job.data.reason,
-              email: account.email,
-              serviceId: job.data.serviceId,
-              proxy: proxy,
               profilePath,
+              reportUrl: targetService.reportUrl,
+              payload,
+              proxy,
             },
             async (event) => {
               await this.reportLogsService.appendEvent(
@@ -188,12 +242,16 @@ export class ReportProcessor extends WorkerHost {
       if (!result) {
         throw new Error(lastAuthError || 'No result');
       }
-      if (result.error) {
-        throw new Error(result.error);
+      if (result.error || !result.success) {
+        throw new Error(result.error || 'Failed to open page');
       }
       const updateData: any = { status: 'success' };
-      if (result.screenshot) {
-        updateData.screenshot = result.screenshot;
+      if (result.tabUrl) {
+        await this.reportLogsService.appendEvent(
+          reportLog._id.toString(),
+          'tab_opened',
+          `Opened: ${result.tabUrl}`,
+        );
       }
 
       await this.reportLogsService.update(reportLog._id.toString(), updateData);

@@ -5,9 +5,19 @@ import * as path from 'path';
 @Injectable()
 export class ProfileManagerService {
   getProfilesRoot(): string {
-    const configured = process.env.PROFILES_DIR;
-    const root = configured ? path.resolve(configured) : path.resolve(process.cwd(), 'profiles');
-    return root;
+    const configuredRaw = (process.env.PROFILES_DIR || '').trim();
+    const configured = configuredRaw.replace(/^"+|"+$/g, '');
+    const isWindowsLongPathPrefixOnly =
+      configured === '\\\\?' || configured === '\\\\?\\' || configured === '\\\\?\\\\';
+    const isWindowsLongPathButMissingTarget =
+      configured.startsWith('\\\\?\\') && configured.length <= '\\\\?\\'.length + 1;
+    const useConfigured =
+      !!configured &&
+      !isWindowsLongPathPrefixOnly &&
+      !isWindowsLongPathButMissingTarget &&
+      configured !== '\\?' &&
+      configured !== '\\?\\';
+    return useConfigured ? path.resolve(configured) : path.resolve(process.cwd(), 'profiles');
   }
 
   getProfilePathForAccountId(accountId: string): string {

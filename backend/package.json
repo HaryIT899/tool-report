@@ -17,7 +17,8 @@
     "seed": "ts-node src/scripts/seed.ts",
     "seed:accounts": "ts-node src/scripts/seed-accounts.ts",
     "seed:proxies": "ts-node src/scripts/seed-proxies.ts",
-    "seed:all": "ts-node src/scripts/seed.ts && ts-node src/scripts/seed-accounts.ts && ts-node src/scripts/seed-proxies.ts"
+    "seed:all": "ts-node src/scripts/seed.ts && ts-node src/scripts/seed-accounts.ts && ts-node src/scripts/seed-proxies.ts",
+    "trigger": "ts-node src/scripts/trigger-report.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",

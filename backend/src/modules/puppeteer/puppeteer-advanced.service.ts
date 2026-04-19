@@ -5,6 +5,7 @@ import StealthPlugin = require('puppeteer-extra-plugin-stealth');
 import { Browser, Page } from 'puppeteer';
 import { Proxy } from '../proxies/schemas/proxy.schema';
 import { ReportServicesService } from '../report-services/report-services.service';
+import * as fs from 'fs';
 
 puppeteer.use(StealthPlugin());
 
@@ -31,6 +32,13 @@ export class PuppeteerAdvancedService {
     private configService: ConfigService,
     private reportServicesService: ReportServicesService,
   ) {}
+
+  private encodePayload(payload: any): string {
+    const json = JSON.stringify(payload);
+    const utf8 = new TextEncoder().encode(json);
+    const base64 = Buffer.from(utf8).toString('base64');
+    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  }
 
   private getRandomDelay(min = 500, max = 2000): number {
     return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -547,6 +555,19 @@ export class PuppeteerAdvancedService {
 
       page = await browser.newPage();
 
+      // Set page title to show proxy info
+      if (data.proxy) {
+        const proxyInfo = `${data.proxy.host}:${data.proxy.port}`;
+        await page.evaluateOnNewDocument((info) => {
+          const originalTitle = document.title;
+          Object.defineProperty(document, 'title', {
+            get: () => `[Proxy: ${info}] ${originalTitle}`,
+            set: () => {},
+          });
+        }, proxyInfo);
+        this.logger.log(`Using proxy: ${proxyInfo}`);
+      }
+
       if (data.proxy?.username && data.proxy?.password) {
         await onStage?.({ stage: 'proxy_auth', message: 'Authenticating proxy' });
         await page.authenticate({
@@ -563,6 +584,17 @@ export class PuppeteerAdvancedService {
       });
 
       await onStage?.({ stage: 'stealth_patch', message: 'Applying stealth settings' });
+
+      // Log proxy info in browser console
+      if (data.proxy) {
+        await page.evaluateOnNewDocument((proxyInfo) => {
+          console.log(
+            '%c🌐 Using Proxy: ' + proxyInfo,
+            'color: blue; font-weight: bold; font-size: 14px;',
+          );
+        }, `${data.proxy.host}:${data.proxy.port} (${data.proxy.type})`);
+      }
+
       await page.evaluateOnNewDocument(() => {
         Object.defineProperty(navigator, 'webdriver', {
           get: () => undefined,
@@ -581,10 +613,25 @@ export class PuppeteerAdvancedService {
         });
       });
 
-      this.logger.log(`Navigating to ${service.reportUrl}`);
+      let finalUrl = service.reportUrl;
+      const isGoogleSearchReport =
+        service.reportUrl.includes('www.google.com') && service.reportUrl.includes('?hl=vi');
+
+      if (isGoogleSearchReport) {
+        const payload = {
+          domain: data.domain,
+          reason: data.reason,
+        };
+        const encoded = this.encodePayload(payload);
+        finalUrl = `${service.reportUrl}#dar=${encoded}`;
+        this.logger.log(`Google Search: Appending hash for extension`);
+        await onStage?.({ stage: 'extension_mode', message: 'Using extension for Google Search' });
+      }
+
+      this.logger.log(`Navigating to ${finalUrl.substring(0, 100)}...`);
       await onStage?.({ stage: 'navigate', message: `Navigating to ${service.reportUrl}` });
 
-      await page.goto(service.reportUrl, {
+      await page.goto(finalUrl, {
         waitUntil: 'networkidle2',
         timeout: this.configService.get('PUPPETEER_TIMEOUT', 60000),
       });
@@ -634,7 +681,7 @@ export class PuppeteerAdvancedService {
       await onStage?.({ stage: 'autofill', message: 'Auto-filling fields' });
 
       const isDmca = service.reportUrl.includes('reportcontent.google.com/forms/dmca_search');
-      if (!isDmca) {
+      if (!isDmca && !isGoogleSearchReport) {
         await page.evaluate(
           (domain, reason, email) => {
             const fillInput = (selectors: string[], value: string) => {
@@ -699,6 +746,10 @@ export class PuppeteerAdvancedService {
       await this.sleep(this.getRandomDelay(1000, 2000));
       await this.randomScroll(page);
 
+      if (isGoogleSearchReport) {
+        await onStage?.({ stage: 'form_specific', message: 'Google Search feedback handling' });
+        await this.handleGoogleSearchReport(page, data.domain, data.reason, onStage);
+      }
       if (service.reportUrl.includes('search.google.com/search-console/report-spam')) {
         await onStage?.({ stage: 'form_specific', message: 'Search Console spam form handling' });
         await this.handleSearchConsoleSpam(page, data.domain, data.reason, onStage);
@@ -825,6 +876,7 @@ export class PuppeteerAdvancedService {
         } catch {}
       }
 
+      await fs.promises.mkdir('screenshots', { recursive: true });
       const screenshotPath = `screenshots/${Date.now()}-${data.domain.replace(/[^a-z0-9]/gi, '_')}.png`;
       await page.screenshot({ path: screenshotPath, fullPage: false });
       await onStage?.({ stage: 'screenshot', message: screenshotMessage });
@@ -2259,6 +2311,444 @@ export class PuppeteerAdvancedService {
       });
     } catch (e: any) {
       await onStage?.({ stage: 'radix_error', message: e?.message || String(e) });
+    }
+  }
+
+  private async handleGoogleSearchReport(
+    page: Page,
+    domain: string,
+    reason: string,
+    onStage?: ReportStageCallback,
+  ): Promise<void> {
+    try {
+      await onStage?.({ stage: 'gg_search_start', message: 'Starting Google Search report flow' });
+
+      let searchUrl = String(domain || '').trim();
+      searchUrl = searchUrl.replace(/[`"'""'']/g, '').trim();
+      if (!/^https?:\/\//i.test(searchUrl)) {
+        searchUrl = `https://${searchUrl}`;
+      }
+
+      let targetDomain = '';
+      try {
+        const url = new URL(searchUrl);
+        targetDomain = url.hostname.toLowerCase();
+      } catch {
+        targetDomain = searchUrl.toLowerCase();
+      }
+
+      await onStage?.({
+        stage: 'gg_search_input',
+        message: `Searching for: ${searchUrl}`,
+      });
+
+      await this.sleep(this.getRandomDelay(1000, 2000));
+
+      const searchInputSelectors = [
+        'textarea#APjFqb',
+        'textarea.gLFyf',
+        'input[name="q"]',
+        'textarea[name="q"]',
+        'input[title="Tìm kiếm"]',
+        'textarea[title="Tìm kiếm"]',
+        'input[aria-label="Tìm kiếm"]',
+        'textarea[aria-label="Tìm kiếm"]',
+      ];
+
+      let searchInputFound = false;
+      for (const selector of searchInputSelectors) {
+        try {
+          await page.waitForSelector(selector, { timeout: 5000, visible: true });
+          const element = await page.$(selector);
+          if (!element) continue;
+
+          const isVisible = await element.evaluate((el) => {
+            const rect = el.getBoundingClientRect();
+            const computed = window.getComputedStyle(el);
+            return (
+              rect.width > 0 &&
+              rect.height > 0 &&
+              computed.display !== 'none' &&
+              computed.visibility !== 'hidden'
+            );
+          });
+
+          if (!isVisible) continue;
+
+          await onStage?.({
+            stage: 'gg_search_fill',
+            message: `Found search input: ${selector}`,
+          });
+
+          try {
+            await element.evaluate((el) => {
+              (el as HTMLElement).scrollIntoView({ block: 'center', inline: 'center' });
+            });
+          } catch {}
+
+          await this.sleep(this.getRandomDelay(300, 600));
+
+          await element.click({ clickCount: 1, delay: 20 });
+          await this.sleep(this.getRandomDelay(200, 400));
+
+          try {
+            await element.click({ clickCount: 3, delay: 20 });
+          } catch {}
+
+          await this.sleep(this.getRandomDelay(200, 400));
+
+          try {
+            await page.keyboard.down('Control');
+            await page.keyboard.press('KeyA');
+            await page.keyboard.up('Control');
+          } catch {}
+          try {
+            await page.keyboard.press('Backspace');
+          } catch {}
+          await page.keyboard.type(searchUrl, { delay: 75 });
+
+          await onStage?.({
+            stage: 'gg_search_typed',
+            message: `Query typed via keyboard: ${searchUrl}`,
+          });
+          searchInputFound = true;
+
+          await this.sleep(this.getRandomDelay(500, 800));
+          break;
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (!searchInputFound) {
+        throw new Error('Search input not found with any selector');
+      }
+
+      try {
+        const submitButton = await page.$('button[type="submit"], input[type="submit"]');
+        if (submitButton) {
+          await submitButton.click();
+          await onStage?.({
+            stage: 'gg_search_submit',
+            message: 'Search submitted via button click',
+          });
+        } else {
+          await page.keyboard.press('Enter');
+          await onStage?.({
+            stage: 'gg_search_submit',
+            message: 'Search submitted via Enter key',
+          });
+        }
+      } catch {
+        await page.keyboard.press('Enter');
+        await onStage?.({ stage: 'gg_search_submit', message: 'Search submitted via Enter key' });
+      }
+
+      await onStage?.({ stage: 'gg_search_wait', message: 'Waiting for search results' });
+
+      await page.waitForFunction(
+        () => {
+          const selectors = ['div.g', '#rso > div', 'div[data-ved]'];
+          for (const sel of selectors) {
+            const results = document.querySelectorAll(sel);
+            const withCite = Array.from(results).filter((el) => el.querySelector('cite'));
+            if (withCite.length > 3) {
+              return true;
+            }
+          }
+          return false;
+        },
+        { timeout: 60000 },
+      );
+
+      await this.sleep(this.getRandomDelay(1000, 2000));
+      await onStage?.({ stage: 'gg_search_results', message: 'Scanning search results' });
+
+      const unwrapGoogleUrl = (url: string): string => {
+        try {
+          if (url.includes('google.com/url?q=')) {
+            const parsed = new URL(url);
+            const qParam = parsed.searchParams.get('q');
+            return qParam || url;
+          }
+        } catch {}
+        return url;
+      };
+
+      const extractDomain = (url: string): string => {
+        try {
+          const unwrapped = unwrapGoogleUrl(url);
+          const parsed = new URL(unwrapped);
+          return String(parsed.hostname || '').toLowerCase();
+        } catch {
+          return '';
+        }
+      };
+
+      const isDomainMatch = (resultDomain: string, target: string): boolean => {
+        if (!resultDomain || !target) return false;
+        if (resultDomain === target) return true;
+        if (resultDomain.endsWith(`.${target}`)) return true;
+        return false;
+      };
+
+      const resultSelectors = ['div.g', '#rso > div', 'div[data-ved]'];
+      let resultHandles: any[] = [];
+      for (const sel of resultSelectors) {
+        const els = await page.$$(sel);
+        const withCite: any[] = [];
+        for (const el of els) {
+          try {
+            const cite = await el.$('cite');
+            if (cite) withCite.push(el);
+          } catch {}
+        }
+        if (withCite.length > 3) {
+          resultHandles = withCite;
+          break;
+        }
+      }
+
+      let matchedResult: { found: boolean; index: number; domain: string } = {
+        found: false,
+        index: -1,
+        domain: '',
+      };
+      for (let i = 0; i < resultHandles.length; i++) {
+        const result = resultHandles[i];
+        let resultDomain = '';
+        try {
+          const citeText = await result.$eval('cite', (el: any) =>
+            String(el.textContent || '').trim(),
+          );
+          if (citeText) resultDomain = extractDomain(citeText);
+        } catch {}
+        if (!resultDomain) {
+          try {
+            const href = await result.$eval('a[href]', (el: any) =>
+              String(el.getAttribute('href') || ''),
+            );
+            if (href) resultDomain = extractDomain(href);
+          } catch {}
+        }
+
+        if (resultDomain && isDomainMatch(resultDomain, targetDomain)) {
+          matchedResult = { found: true, index: i, domain: resultDomain };
+          break;
+        }
+      }
+
+      if (!matchedResult.found) {
+        await onStage?.({
+          stage: 'gg_not_found',
+          message: `NOT_FOUND_ON_GOOGLE: No result found for domain ${targetDomain}`,
+        });
+        return;
+      }
+
+      await onStage?.({
+        stage: 'gg_found',
+        message: `Found matching result at index ${matchedResult.index}: ${matchedResult.domain}`,
+      });
+
+      const captchaDetected = await page.evaluate(() => {
+        const text = (document.body?.innerText || '').toLowerCase();
+        const iframes = document.querySelectorAll(
+          'iframe[src*="recaptcha"], iframe[src*="captcha"]',
+        );
+        return text.includes('verify you are human') || iframes.length > 0;
+      });
+
+      if (captchaDetected) {
+        await onStage?.({
+          stage: 'gg_captcha',
+          message: 'NEED_VERIFY: CAPTCHA detected, cannot proceed',
+        });
+        return;
+      }
+
+      await onStage?.({ stage: 'gg_open_menu', message: 'Opening result menu (3 dots)' });
+
+      let menuOpened = false;
+      try {
+        const result = resultHandles[matchedResult.index];
+        if (result) {
+          const menuSelectors = [
+            '[aria-label*="More options" i]',
+            '[aria-label*="About this result" i]',
+            '[aria-label*="more" i]',
+            '[aria-label*="tùy chọn" i]',
+            '[aria-label*="tuỳ chọn" i]',
+          ];
+          for (const sel of menuSelectors) {
+            const btn = await result.$(sel);
+            if (!btn) continue;
+            const box = await btn.boundingBox();
+            if (!box) continue;
+            await btn.click({ delay: 30 });
+            menuOpened = true;
+            break;
+          }
+
+          if (!menuOpened) {
+            const fallbackBtn = await result.$('button, [role="button"]');
+            if (fallbackBtn) {
+              const box = await fallbackBtn.boundingBox();
+              if (box) {
+                await fallbackBtn.click({ delay: 30 });
+                menuOpened = true;
+              }
+            }
+          }
+        }
+      } catch {}
+
+      if (!menuOpened) {
+        await onStage?.({
+          stage: 'gg_menu_failed',
+          message: 'Could not find or click menu button',
+        });
+      }
+
+      await this.sleep(this.getRandomDelay(800, 1500));
+
+      await onStage?.({ stage: 'gg_find_feedback', message: 'Looking for Feedback button' });
+
+      const clickFirstXPath = async (xpaths: string[]) => {
+        for (const xp of xpaths) {
+          let handles: any[] = [];
+          try {
+            handles = await page.$x(xp);
+          } catch {
+            handles = [];
+          }
+          for (const h of handles) {
+            try {
+              const box = await h.boundingBox();
+              if (!box) continue;
+              await h.click({ delay: 30 });
+              return true;
+            } catch {}
+          }
+        }
+        return false;
+      };
+
+      const feedbackClicked = await clickFirstXPath([
+        '//*[self::a or self::button or @role="menuitem" or @role="button"][contains(., "Phản hồi")]',
+        '//*[self::a or self::button or @role="menuitem" or @role="button"][contains(., "Feedback")]',
+        '//*[self::a or self::button or @role="menuitem" or @role="button"][contains(., "Report")]',
+        '//*[self::a or self::button or @role="menuitem" or @role="button"][contains(., "Báo cáo")]',
+      ]);
+
+      if (!feedbackClicked) {
+        await onStage?.({
+          stage: 'gg_feedback_not_found',
+          message: 'Feedback button not found in menu',
+        });
+        return;
+      }
+
+      await this.sleep(this.getRandomDelay(1000, 2000));
+      await onStage?.({ stage: 'gg_feedback_modal', message: 'Feedback modal opened' });
+
+      await page.waitForSelector('[role="dialog"], [aria-modal="true"]', { timeout: 10000 });
+
+      await onStage?.({
+        stage: 'gg_select_reason',
+        message: 'Selecting "Other reason" / "Lý do khác"',
+      });
+
+      await clickFirstXPath([
+        '//*[self::label or self::button or @role="radio" or @role="button"][contains(., "Lý do khác")]',
+        '//*[self::label or self::button or @role="radio" or @role="button"][contains(., "Other")]',
+        '//*[self::label or self::button or @role="radio" or @role="button"][contains(., "Khác")]',
+      ]);
+
+      await this.sleep(this.getRandomDelay(500, 1000));
+
+      await onStage?.({
+        stage: 'gg_select_category',
+        message: 'Selecting category (e.g. "Nội dung rác")',
+      });
+
+      await clickFirstXPath([
+        '//*[self::label or self::button or @role="radio" or @role="option" or @role="button"][contains(., "Nội dung rác")]',
+        '//*[self::label or self::button or @role="radio" or @role="option" or @role="button"][contains(., "Spam")]',
+        '//*[self::label or self::button or @role="radio" or @role="option" or @role="button"][contains(., "spam")]',
+        '//*[self::label or self::button or @role="radio" or @role="option" or @role="button"][contains(., "Không phù hợp")]',
+        '//*[self::label or self::button or @role="radio" or @role="option" or @role="button"][contains(., "Inappropriate")]',
+      ]);
+
+      await this.sleep(this.getRandomDelay(500, 1000));
+
+      await onStage?.({ stage: 'gg_fill_details', message: 'Filling feedback textarea' });
+
+      let textareaFilled = false;
+      try {
+        const dialog = (await page.$('[role="dialog"], [aria-modal="true"]')) || null;
+        const textarea =
+          (dialog ? await dialog.$('textarea') : null) || (await page.$('textarea')) || null;
+        if (textarea) {
+          const box = await textarea.boundingBox();
+          if (box) {
+            await textarea.click({ delay: 30 });
+            await this.sleep(this.getRandomDelay(300, 800));
+            try {
+              await page.keyboard.down('Control');
+              await page.keyboard.press('KeyA');
+              await page.keyboard.up('Control');
+            } catch {}
+            try {
+              await page.keyboard.press('Backspace');
+            } catch {}
+            await page.keyboard.type(String(reason || '').slice(0, 500), { delay: 50 });
+            textareaFilled = true;
+          }
+        }
+      } catch {}
+
+      await onStage?.({
+        stage: 'gg_textarea_filled',
+        message: textareaFilled ? 'Textarea filled with reason' : 'Textarea not found',
+      });
+
+      await this.sleep(this.getRandomDelay(500, 1000));
+
+      await onStage?.({ stage: 'gg_submit', message: 'Clicking Submit / Gửi' });
+
+      const submitClicked = await clickFirstXPath([
+        '//*[self::button or @role="button"][contains(., "Gửi")]',
+        '//*[self::button or @role="button"][contains(., "Submit")]',
+        '//*[self::button or @role="button"][contains(., "Send")]',
+      ]);
+
+      if (!submitClicked) {
+        await onStage?.({
+          stage: 'gg_submit_not_found',
+          message: 'Submit button not found or disabled',
+        });
+        return;
+      }
+
+      await this.sleep(this.getRandomDelay(1500, 2500));
+
+      const submitted = await page.evaluate(() => {
+        const text = (document.body?.innerText || '').toLowerCase();
+        return (
+          text.includes('thank you') ||
+          text.includes('cảm ơn') ||
+          text.includes('submitted') ||
+          text.includes('đã gửi')
+        );
+      });
+
+      await onStage?.({
+        stage: 'gg_submit_result',
+        message: submitted ? 'Successfully submitted feedback' : 'Submission status unclear',
+      });
+    } catch (e: any) {
+      await onStage?.({ stage: 'gg_error', message: e?.message || String(e) });
     }
   }
 

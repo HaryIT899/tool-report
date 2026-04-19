@@ -72,6 +72,18 @@ const Dashboard = () => {
   const [templateModalVisible, setTemplateModalVisible] = useState(false);
   const [logsDrawerVisible, setLogsDrawerVisible] = useState(false);
   const [selectedDomain, setSelectedDomain] = useState(null);
+  const [clientReportDrawerVisible, setClientReportDrawerVisible] = useState(false);
+  const [clientReportDomain, setClientReportDomain] = useState(null);
+  const [clientReportEmail, setClientReportEmail] = useState('');
+  const [clientReportName, setClientReportName] = useState('');
+  const [selectedProxyId, setSelectedProxyId] = useState(null);
+  const [clientReportCompany, setClientReportCompany] = useState('');
+  const [clientReportTitle, setClientReportTitle] = useState('');
+  const [clientReportPhone, setClientReportPhone] = useState('');
+  const [clientReportSignature, setClientReportSignature] = useState('');
+  const [clientReportAuthorizedUrl, setClientReportAuthorizedUrl] = useState('');
+  const [clientReportInfringingUrls, setClientReportInfringingUrls] = useState('');
+  const [clientReportWorkDescription, setClientReportWorkDescription] = useState('');
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [queueStats, setQueueStats] = useState({});
   const [form] = Form.useForm();
@@ -122,6 +134,20 @@ const Dashboard = () => {
       window.removeEventListener('keydown', handleKeyPress);
     };
   }, []);
+
+  useEffect(() => {
+    if (clientReportDrawerVisible) {
+      setClientReportEmail(localStorage.getItem('reporterEmail') || '');
+      setClientReportName(localStorage.getItem('reporterName') || '');
+      setClientReportCompany(localStorage.getItem('reporterCompany') || '');
+      setClientReportTitle(localStorage.getItem('reporterTitle') || '');
+      setClientReportPhone(localStorage.getItem('reporterPhone') || '');
+      setClientReportSignature(localStorage.getItem('reporterSignature') || '');
+      setClientReportAuthorizedUrl(localStorage.getItem('reporterAuthorizedUrl') || '');
+      setClientReportInfringingUrls(localStorage.getItem('reporterInfringingUrls') || '');
+      setClientReportWorkDescription(localStorage.getItem('reporterWorkDescription') || '');
+    }
+  }, [clientReportDrawerVisible]);
 
   const fetchDomains = async () => {
     setLoading(true);
@@ -373,22 +399,130 @@ const Dashboard = () => {
     }
   };
 
-  const handleReportDomain = async (domainId) => {
+  const openReportTabAndAutofill = (reportUrl, payload) => {
+    const encodePayload = (obj) => {
+      const json = JSON.stringify(obj || {});
+      const utf8 = encodeURIComponent(json).replace(/%([0-9A-F]{2})/g, (_, p1) =>
+        String.fromCharCode(parseInt(p1, 16)),
+      );
+      const b64 = btoa(utf8);
+      return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    };
+
+    const encoded = encodePayload(payload);
+
+    let urlToOpen = reportUrl;
+    try {
+      const u = new URL(reportUrl);
+      const params = new URLSearchParams(String(u.hash || '').replace(/^#/, ''));
+      params.set('dar', encoded);
+      u.hash = params.toString();
+      urlToOpen = u.toString();
+    } catch (e) {
+      void e;
+    }
+
+    const tab = window.open(urlToOpen, `dar_${encoded}`);
+    if (!tab) {
+      message.error('Popup bị chặn. Hãy cho phép popups cho trang này rồi thử lại.');
+      return;
+    }
+
+    const msg = { type: 'FILL_REPORT_FORM', payload };
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries += 1;
+      try {
+        tab.postMessage(msg, '*');
+      } catch (e) {
+        void e;
+      }
+      if (tries >= 25) clearInterval(timer);
+    }, 600);
+  };
+
+  const openWithPuppeteer = async (serviceId) => {
+    if (!clientReportDomain) return;
+    try {
+      message.loading({ content: 'Opening browser with account profile...', key: 'puppeteer', duration: 0 });
+      const payload = {};
+      if (selectedProxyId) {
+        payload.proxyId = selectedProxyId;
+        console.log('Sending proxyId:', selectedProxyId);
+      } else {
+        console.log('No proxy selected');
+      }
+      const result = await reportsApi.runPuppeteerTool(clientReportDomain._id, serviceId, payload);
+      message.destroy('puppeteer');
+      if (result.ok) {
+        const accountInfo = result.account?.email || 'default';
+        let msg = `Browser opened with account: ${accountInfo}`;
+        if (result.proxy) {
+          msg += `\n🌐 Proxy: ${result.proxy.host}:${result.proxy.port}`;
+        } else {
+          msg += '\n🌐 Proxy: Direct connection (no proxy)';
+        }
+        message.success(msg, 5);
+      } else {
+        message.error(result.error || 'Failed to open browser');
+      }
+    } catch (error) {
+      message.destroy('puppeteer');
+      message.error('Failed to open browser with Puppeteer');
+      console.error(error);
+    }
+  };
+
+  const buildAutofillPayload = (reportUrl) => {
+    const cleanDomain = String(clientReportDomain?.domain || '').trim();
+    const host = cleanDomain.replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+    const isGoogleSpam = String(reportUrl || '').includes('search.google.com/search-console/report-spam');
+    const isSafeBrowsing = String(reportUrl || '').includes('safebrowsing.google.com/safebrowsing/report_phish');
+
+    return {
+      domain: cleanDomain,
+      reason: clientReportDomain?.reason || '',
+      email: clientReportEmail,
+      name: clientReportName,
+      company: clientReportCompany,
+      title: clientReportTitle,
+      phone: clientReportPhone,
+      signature: clientReportSignature,
+      authorizedUrl: clientReportAuthorizedUrl || `https://${host}`,
+      infringingUrls: clientReportInfringingUrls || `https://${host}`,
+      workDescription: clientReportWorkDescription || clientReportDomain?.reason || '',
+      firstName: String(clientReportName || '').split(' ').slice(0, 1).join(' ').trim(),
+      lastName: String(clientReportName || '').split(' ').slice(1).join(' ').trim(),
+      queryPhrase: host,
+      urlToReport: `https://${host}`,
+      safeBrowsingThreatType: 'Tấn công phi kỹ thuật',
+      safeBrowsingThreatCategory: 'Lừa đảo qua mạng xã hội',
+      autoSubmit: isGoogleSpam || isSafeBrowsing,
+    };
+  };
+
+  const handleReportDomain = async (domainRecord) => {
     try {
       if (!reportServices.length) {
         message.error('No report services available');
         return;
       }
-      const serviceIds = reportServices.map((s) => s._id);
-      const data = await reportsApi.reportDomain(domainId, { serviceIds });
-      if (data.jobs?.length === 0) {
-        message.warning(data.message);
-      } else {
-        message.success(data.message);
-        message.info('Đã autofill form. Vào Logs để xem screenshot và tự hoàn tất captcha + submit.');
+      setClientReportDomain(domainRecord);
+      
+      // Load saved proxy selection
+      const savedProxyId = localStorage.getItem('selectedProxyId');
+      if (savedProxyId) {
+        // Check if proxy still exists and is active
+        const proxyExists = proxies.find(p => p._id === savedProxyId && p.status === 'active');
+        if (proxyExists) {
+          setSelectedProxyId(savedProxyId);
+        } else {
+          localStorage.removeItem('selectedProxyId');
+          setSelectedProxyId(null);
+        }
       }
-      fetchDomains();
-      fetchQueueStats();
+      
+      setClientReportDrawerVisible(true);
     } catch (error) {
       message.error(error.response?.data?.message || 'Failed to queue reports');
     }
@@ -539,7 +673,7 @@ const Dashboard = () => {
             type="primary"
             size="small"
             icon={<ThunderboltOutlined />}
-            onClick={() => handleReportDomain(record._id)}
+            onClick={() => handleReportDomain(record)}
             disabled={record.status === 'processing'}
           >
             Report All
@@ -1182,6 +1316,279 @@ const Dashboard = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      <Drawer
+        title={`Client Report - ${clientReportDomain?.domain || ''}`}
+        placement="right"
+        onClose={() => setClientReportDrawerVisible(false)}
+        open={clientReportDrawerVisible}
+        width={700}
+      >
+        {!clientReportDomain ? (
+          <Empty description="Chọn domain để report." />
+        ) : (
+          <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            <Card size="small" title="Thông tin autofill">
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <div>
+                  <Text strong>Domain:</Text> <Text>{clientReportDomain.domain}</Text>
+                </div>
+                <div>
+                  <Text strong>Reason:</Text>
+                  <div style={{ marginTop: 6 }}>
+                    <TextArea value={clientReportDomain.reason || ''} rows={4} readOnly />
+                  </div>
+                </div>
+                <div>
+                  <Text strong>Email (optional):</Text>
+                  <div style={{ marginTop: 6 }}>
+                    <Input
+                      value={clientReportEmail}
+                      placeholder="Email để extension autofill (nếu form có field email)"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setClientReportEmail(v);
+                        localStorage.setItem('reporterEmail', v);
+                      }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Text strong>Name (optional):</Text>
+                  <div style={{ marginTop: 6 }}>
+                    <Input
+                      value={clientReportName}
+                      placeholder="Tên người report (Cloudflare/Radix/DMCA nếu cần)"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setClientReportName(v);
+                        localStorage.setItem('reporterName', v);
+                      }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Text strong>Company (optional):</Text>
+                  <div style={{ marginTop: 6 }}>
+                    <Input
+                      value={clientReportCompany}
+                      placeholder="Company (DMCA/Cloudflare nếu cần)"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setClientReportCompany(v);
+                        localStorage.setItem('reporterCompany', v);
+                      }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Text strong>Title / Role (optional):</Text>
+                  <div style={{ marginTop: 6 }}>
+                    <Input
+                      value={clientReportTitle}
+                      placeholder="Title/Role (Cloudflare nếu cần)"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setClientReportTitle(v);
+                        localStorage.setItem('reporterTitle', v);
+                      }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Text strong>Phone (optional):</Text>
+                  <div style={{ marginTop: 6 }}>
+                    <Input
+                      value={clientReportPhone}
+                      placeholder="Phone (Cloudflare nếu cần)"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setClientReportPhone(v);
+                        localStorage.setItem('reporterPhone', v);
+                      }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Text strong>Signature (optional):</Text>
+                  <div style={{ marginTop: 6 }}>
+                    <Input
+                      value={clientReportSignature}
+                      placeholder="Signature (DMCA nếu cần)"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setClientReportSignature(v);
+                        localStorage.setItem('reporterSignature', v);
+                      }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Text strong>Authorized URL (optional):</Text>
+                  <div style={{ marginTop: 6 }}>
+                    <Input
+                      value={clientReportAuthorizedUrl}
+                      placeholder="URL mẫu hợp lệ (DMCA - nếu có)"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setClientReportAuthorizedUrl(v);
+                        localStorage.setItem('reporterAuthorizedUrl', v);
+                      }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Text strong>Infringing URL(s) (optional):</Text>
+                  <div style={{ marginTop: 6 }}>
+                    <TextArea
+                      value={clientReportInfringingUrls}
+                      rows={2}
+                      placeholder="Danh sách URL vi phạm (DMCA). Mỗi dòng 1 URL."
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setClientReportInfringingUrls(v);
+                        localStorage.setItem('reporterInfringingUrls', v);
+                      }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Text strong>Work description (optional):</Text>
+                  <div style={{ marginTop: 6 }}>
+                    <TextArea
+                      value={clientReportWorkDescription}
+                      rows={3}
+                      placeholder="Mô tả tác phẩm có bản quyền (DMCA). Để trống sẽ dùng Reason."
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setClientReportWorkDescription(v);
+                        localStorage.setItem('reporterWorkDescription', v);
+                      }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Text strong>Proxy (optional - for Puppeteer only):</Text>
+                  <div style={{ marginTop: 6 }}>
+                    <Select
+                      value={selectedProxyId}
+                      placeholder="No proxy (direct connection)"
+                      style={{ width: '100%' }}
+                      allowClear
+                      onChange={(value) => {
+                        setSelectedProxyId(value);
+                        if (value) {
+                          localStorage.setItem('selectedProxyId', value);
+                        } else {
+                          localStorage.removeItem('selectedProxyId');
+                        }
+                      }}
+                    >
+                      {proxies
+                        .filter((p) => p.status === 'active')
+                        .map((proxy) => (
+                          <Option key={proxy._id} value={proxy._id}>
+                            {proxy.host}:{proxy.port} ({proxy.type}) - Used: {proxy.useCount || 0} times
+                          </Option>
+                        ))}
+                    </Select>
+                  </div>
+                  {selectedProxyId && (
+                    <div style={{ marginTop: 8 }}>
+                      <Tag color="blue">
+                        Proxy selected: {proxies.find(p => p._id === selectedProxyId)?.host}:{proxies.find(p => p._id === selectedProxyId)?.port}
+                      </Tag>
+                    </div>
+                  )}
+                </div>
+                <Text type="secondary">
+                  Extension: Mở tab trong browser hiện tại. Puppeteer: Mở browser riêng với account profile đã đăng nhập.
+                </Text>
+              </Space>
+            </Card>
+
+            <Card size="small" title="Services">
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Space wrap>
+                  <Button
+                    type="primary"
+                    onClick={() => {
+                      const activeServices = reportServices.filter((s) => s.active !== false);
+                      if (activeServices.length === 0) {
+                        message.warning('Không có service active');
+                        return;
+                      }
+                      message.info('Mở nhiều tab có thể bị popup blocker. Nếu bị chặn, hãy bấm từng service.');
+                      activeServices.forEach((s, i) => {
+                        setTimeout(() => {
+                          openReportTabAndAutofill(s.reportUrl, buildAutofillPayload(s.reportUrl));
+                        }, i * 700);
+                      });
+                    }}
+                  >
+                    Open All Services
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setClientReportDrawerVisible(false);
+                      setClientReportDomain(null);
+                    }}
+                  >
+                    Close
+                  </Button>
+                </Space>
+
+                <Table
+                  size="small"
+                  pagination={false}
+                  rowKey={(r) => r._id}
+                  dataSource={reportServices.filter((s) => s.active !== false)}
+                  columns={[
+                    {
+                      title: 'Service',
+                      dataIndex: 'name',
+                      key: 'name',
+                      render: (name) => (
+                        <Space>
+                          {getServiceIcon(String(name || ''))}
+                          <Text>{name}</Text>
+                        </Space>
+                      ),
+                    },
+                    {
+                      title: 'Open',
+                      key: 'open',
+                      width: 280,
+                      render: (_, svc) => (
+                        <Space>
+                          <Button
+                            size="small"
+                            type="primary"
+                            onClick={() => {
+                              openReportTabAndAutofill(svc.reportUrl, buildAutofillPayload(svc.reportUrl));
+                            }}
+                          >
+                            Extension
+                          </Button>
+                          <Button
+                            size="small"
+                            type="default"
+                            onClick={() => {
+                              openWithPuppeteer(svc._id);
+                            }}
+                          >
+                            Puppeteer
+                          </Button>
+                        </Space>
+                      ),
+                    },
+                  ]}
+                />
+              </Space>
+            </Card>
+          </Space>
+        )}
+      </Drawer>
 
       <Drawer
         title={`Report Logs - ${selectedDomain?.domain}`}

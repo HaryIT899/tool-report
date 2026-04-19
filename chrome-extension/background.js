@@ -27,6 +27,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ success: true, count: urls.length });
   }
 
+  if (request.action === 'setTabPayload') {
+    const tabId = sender?.tab?.id;
+    if (!tabId) {
+      sendResponse({ success: false });
+      return true;
+    }
+    chrome.storage.local.set({ [`tabPayload_${tabId}`]: request.payload || null }, () => {
+      sendResponse({ success: true });
+    });
+  }
+
+  if (request.action === 'getTabPayload') {
+    const tabId = sender?.tab?.id;
+    if (!tabId) {
+      sendResponse({ success: false, payload: null });
+      return true;
+    }
+    chrome.storage.local.get(`tabPayload_${tabId}`, (result) => {
+      sendResponse({ success: true, payload: result[`tabPayload_${tabId}`] || null });
+    });
+  }
+
   return true;
 });
 
@@ -48,6 +70,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   chrome.storage.local.remove(`tab_${tabId}`);
+  chrome.storage.local.remove(`tabPayload_${tabId}`);
 });
 
 console.log('Domain Abuse Reporter Extension loaded');

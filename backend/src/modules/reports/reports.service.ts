@@ -6,6 +6,10 @@ import { DomainsService } from '../domains/domains.service';
 import { ReportServicesService } from '../report-services/report-services.service';
 import { AccountsService } from '../accounts/accounts.service';
 import { ReportLogsService } from '../report-logs/report-logs.service';
+import { PuppeteerAdvancedService } from '../puppeteer/puppeteer-advanced.service';
+import { ProxiesService } from '../proxies/proxies.service';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class ReportsService {
@@ -17,6 +21,8 @@ export class ReportsService {
     private reportServicesService: ReportServicesService,
     private accountsService: AccountsService,
     private reportLogsService: ReportLogsService,
+    private puppeteerAdvancedService: PuppeteerAdvancedService,
+    private proxiesService: ProxiesService,
   ) {}
 
   private filterServices(services: any[]): any[] {
@@ -112,7 +118,18 @@ export class ReportsService {
   }
 
   async reportDomain(domainId: string, serviceIds: string[], userId: string) {
-    this.logger.log(`reportDomain requested: domainId=${domainId} services=${serviceIds.length}`);
+    return this.reportDomainWithAccount(domainId, serviceIds, userId, undefined);
+  }
+
+  async reportDomainWithAccount(
+    domainId: string,
+    serviceIds: string[],
+    userId: string,
+    accountId?: string,
+  ) {
+    this.logger.log(
+      `reportDomain requested: domainId=${domainId} services=${serviceIds.length} accountId=${accountId || 'auto'}`,
+    );
     const domain = await this.domainsService.findById(domainId, userId);
 
     const services = this.filterServices(await this.reportServicesService.findAll());
@@ -131,7 +148,17 @@ export class ReportsService {
 
     const jobs = [];
     for (const service of selectedServices) {
-      const account = await this.accountsService.getNextAvailableAccount();
+      let account = null;
+      if (accountId) {
+        // Use specific account
+        account = await this.accountsService.findById(accountId);
+        if (!account) {
+          throw new Error(`Account ${accountId} not found`);
+        }
+      } else {
+        // Auto-select account
+        account = await this.accountsService.getNextAvailableAccount();
+      }
 
       const jobData: ReportJobData = {
         domainId: domain._id.toString(),
@@ -163,11 +190,11 @@ export class ReportsService {
       await this.reportLogsService.appendEvent(
         log._id.toString(),
         'queued',
-        `Queued job for ${service.name}`,
+        `Queued job for ${service.name} with account ${account?.email || 'default'}`,
       );
       this.logger.log(`Queued jobId=${job.id} service=${service.name} logId=${log._id.toString()}`);
 
-      jobs.push({ jobId: job.id, service: service.name, logId: log._id });
+      jobs.push({ jobId: job.id, service: service.name, logId: log._id, account: account?.email });
     }
 
     await this.domainsService.update(
@@ -243,6 +270,104 @@ export class ReportsService {
       message: `Queued ${totalJobs} report jobs for ${pendingDomains.length} domains`,
       domains: pendingDomains.length,
       jobs: totalJobs,
+    };
+  }
+
+  async runPuppeteerTool(
+    domainId: string,
+    serviceId: string,
+    userId: string,
+    body?: { email?: string; accountId?: string; proxyId?: string },
+  ) {
+    this.logger.log(`runPuppeteerTool called with body: ${JSON.stringify(body)}`);
+
+    const domain = await this.domainsService.findById(domainId, userId);
+    const services = this.filterServices(await this.reportServicesService.findAll());
+    const service = services.find((s) => s._id.toString() === serviceId);
+    if (!service) {
+      return { ok: false, error: 'Report service not found' };
+    }
+
+    let profilePath: string;
+    let email = (body?.email || '').trim();
+    let accountId: string | undefined;
+    let proxy = null;
+
+    // Handle proxy selection
+    if (body?.proxyId) {
+      // Use specific proxy if provided
+      proxy = await this.proxiesService.findById(body.proxyId);
+      if (!proxy) {
+        return { ok: false, error: 'Proxy not found' };
+      }
+      if (proxy.status !== 'active') {
+        return { ok: false, error: 'Proxy is not active' };
+      }
+      this.logger.log(`Using specific proxy: ${proxy.host}:${proxy.port}`);
+    } else {
+      // Auto-select proxy (similar to account rotation)
+      proxy = await this.proxiesService.getNextAvailableProxy();
+      if (proxy) {
+        this.logger.log(`Auto-selected proxy: ${proxy.host}:${proxy.port}`);
+      } else {
+        this.logger.log('No proxy available, using direct connection');
+      }
+    }
+
+    if (body?.accountId) {
+      const account = await this.accountsService.ensureProfilePathById(body.accountId);
+      if (!account) {
+        return { ok: false, error: 'Account not found' };
+      }
+      profilePath = account.profilePath;
+      accountId = account._id.toString();
+      if (!email) email = account.email;
+    } else {
+      // Auto-select an available account instead of using default profile
+      const account = await this.accountsService.getNextAvailableAccount();
+      if (account) {
+        profilePath = account.profilePath;
+        accountId = account._id.toString();
+        if (!email) email = account.email;
+        this.logger.log(`Auto-selected account: ${email} for tool`);
+      } else {
+        // Fallback to default profile if no account available
+        const configuredRaw = (process.env.PROFILES_DIR || '').trim();
+        const configured = configuredRaw.replace(/^"+|"+$/g, '');
+        const profilesRoot = configured
+          ? path.resolve(configured)
+          : path.resolve(process.cwd(), 'profiles');
+        await fs.promises.mkdir(profilesRoot, { recursive: true });
+        profilePath = path.join(profilesRoot, 'profile_tool_default');
+        await fs.promises.mkdir(profilePath, { recursive: true });
+        this.logger.warn('No account available, using default profile');
+      }
+    }
+
+    const events: { stage: string; message?: string }[] = [];
+    const result = await this.puppeteerAdvancedService.openReportPage(
+      {
+        domain: domain.domain,
+        reason: domain.reason,
+        email: email || undefined,
+        serviceId: service._id.toString(),
+        profilePath,
+        proxy: proxy || undefined,
+      },
+      async (event) => {
+        events.push({ stage: event.stage, message: event.message });
+      },
+    );
+
+    return {
+      ok: !result.error,
+      service: { id: service._id.toString(), name: service.name, reportUrl: service.reportUrl },
+      domain: { id: domain._id.toString(), domain: domain.domain },
+      account: accountId ? { id: accountId, email } : null,
+      proxy: proxy ? { id: proxy._id.toString(), host: proxy.host, port: proxy.port } : null,
+      profilePath,
+      events,
+      ...result,
     };
   }
 
