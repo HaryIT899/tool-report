@@ -93,9 +93,8 @@ const Dashboard = () => {
   const [accountForm] = Form.useForm();
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const backendBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api')
-    .replace(/\/api\/?$/, '')
-    .replace(/\/$/, '');
+  // Use empty string for relative paths - proxied through Vite
+  const backendBaseUrl = '';
 
   useEffect(() => {
     fetchDomains();
