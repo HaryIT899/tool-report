@@ -263,7 +263,11 @@ const handleCloudflareRegistrarWhois = async (payload) => {
     if (second) second.click();
   } catch {}
 
-  showNotification('Cloudflare filled. Hãy kiểm tra lại rồi tự submit.');
+  showNotification('✅ Cloudflare filled. Hãy kiểm tra lại rồi tự submit.');
+  
+  // Đánh dấu hoàn tất để dừng autofill
+  autofillCompleted = true;
+  setTimeout(() => stopAutofill(), 1000);
 };
 
 const handleRadixAbuse = async (payload) => {
@@ -349,7 +353,28 @@ const handleRadixAbuse = async (payload) => {
   const check = document.querySelector('#checkFormData');
   if (check && !check.checked) check.click();
 
-  showNotification('Radix filled. Hãy kiểm tra lại rồi tự submit.');
+  await sleep(rand(500, 1000));
+  
+  // 🔥 AUTO SUBMIT
+  const finalSubmitBtn = 
+    findByText('button', (t) => t.toLowerCase() === 'submit') ||
+    document.querySelector('button[type="submit"]') ||
+    document.querySelector('button.btn-primary');
+  
+  if (finalSubmitBtn) {
+    try {
+      finalSubmitBtn.scrollIntoView({ block: 'center', inline: 'center' });
+    } catch {}
+    await sleep(rand(300, 600));
+    finalSubmitBtn.click();
+    showNotification('✅ Radix: Đã fill và tự động submit!');
+  } else {
+    showNotification('⚠️ Radix: Đã fill xong nhưng không tìm thấy nút Submit');
+  }
+  
+  // Đánh dấu hoàn tất để dừng autofill
+  autofillCompleted = true;
+  setTimeout(() => stopAutofill(), 1000);
 };
 
 const handleGoogleDmca = async (payload) => {
@@ -411,7 +436,11 @@ const handleGoogleDmca = async (payload) => {
 
   await typeIf(findInputByAriaContains('input', ['signature', 'chữ ký']), signature);
 
-  showNotification('DMCA filled. Hãy tự review, tick checkbox nếu có, rồi submit.');
+  showNotification('✅ DMCA filled. Hãy tự review, tick checkbox nếu có, rồi submit.');
+  
+  // Đánh dấu hoàn tất để dừng autofill
+  autofillCompleted = true;
+  setTimeout(() => stopAutofill(), 1000);
 };
 
 const handleGoogleSearchConsoleSpam = async (payload) => {
@@ -555,7 +584,11 @@ const handleGoogleSearchConsoleSpam = async (payload) => {
     return;
   }
 
-  showNotification('Google Spam filled. Hãy kiểm tra lại rồi bấm Gửi.');
+  showNotification('✅ Google Spam filled. Hãy kiểm tra lại rồi bấm Gửi.');
+  
+  // Đánh dấu hoàn tất để dừng autofill
+  autofillCompleted = true;
+  setTimeout(() => stopAutofill(), 1000);
 };
 
 const handleGoogleSearchFeedback = async (payload) => {
@@ -1045,6 +1078,10 @@ const handleGoogleSearchFeedback = async (payload) => {
     showNotification('⚠️ Đã fill xong, hãy bấm nút Gửi thủ công');
     console.log('Submit button not found or disabled');
   }
+  
+  // Đánh dấu hoàn tất để dừng autofill
+  autofillCompleted = true;
+  setTimeout(() => stopAutofill(), 1000);
 };
 
 const handleGoogleSafeBrowsingReportPhish = async (payload) => {
@@ -1117,33 +1154,55 @@ const handleGoogleSafeBrowsingReportPhish = async (payload) => {
   const detailsEl = document.querySelector('textarea[formcontrolname="details"]');
   if (detailsEl && details) await typeLikeHuman(detailsEl, details);
 
-  const shouldSubmit = payload.autoSubmit === true;
-  if (shouldSubmit) {
-    const hasUrl = !!urlEl && !!normText(urlEl.value);
-    const submitBtn =
-      findByText('button', (t) => t.toLowerCase() === 'gửi' || t.toLowerCase() === 'submit') ||
-      findByText('button span', (t) => t.toLowerCase() === 'gửi' || t.toLowerCase() === 'submit')?.closest('button') ||
-      document.querySelector('button[type="submit"]') ||
-      null;
+  await sleep(rand(500, 1000));
 
-    if (!hasUrl) {
-      showNotification('Safe Browsing: chưa fill được URL nên không auto gửi. Bạn bấm Gửi tay.');
-      return;
-    }
-    if (submitBtn) {
-      try {
-        submitBtn.scrollIntoView({ block: 'center', inline: 'center' });
-      } catch {}
-      await sleep(rand(120, 320));
-      submitBtn.click();
-      showNotification('Safe Browsing: đã bấm Gửi. Nếu có reCAPTCHA thì bạn cần xác nhận.');
-      return;
-    }
-    showNotification('Safe Browsing: đã fill xong nhưng không thấy nút Gửi (hãy bấm tay).');
-    return;
+  // 🔥 Click "Tiếp tục" button nếu có (step 1 → step 2)
+  const continueBtn = 
+    findByText('button', (t) => t.toLowerCase() === 'tiếp tục' || t.toLowerCase() === 'continue' || t.toLowerCase() === 'next') ||
+    findByText('button span', (t) => t.toLowerCase() === 'tiếp tục' || t.toLowerCase() === 'continue')?.closest('button');
+  
+  if (continueBtn) {
+    try {
+      continueBtn.scrollIntoView({ block: 'center', inline: 'center' });
+    } catch {}
+    await sleep(rand(300, 600));
+    continueBtn.click();
+    console.log('Clicked "Tiếp tục" button');
+    showNotification('🔄 Đã click Tiếp tục, đang đợi form step 2...');
+    
+    // Đợi form step 2 xuất hiện
+    await sleep(rand(2000, 3000));
   }
 
-  showNotification('Safe Browsing filled. Hãy kiểm tra lại rồi bấm Gửi.');
+  // 🔥 LUÔN AUTO SUBMIT (step 2)
+  const hasUrl = !!urlEl && !!normText(urlEl.value);
+  const submitBtn =
+    findByText('button', (t) => t.toLowerCase() === 'gửi' || t.toLowerCase() === 'submit') ||
+    findByText('button span', (t) => t.toLowerCase() === 'gửi' || t.toLowerCase() === 'submit')?.closest('button') ||
+    document.querySelector('button[type="submit"]') ||
+    null;
+
+  if (!hasUrl) {
+    showNotification('⚠️ Safe Browsing: Chưa fill được URL, không thể submit');
+    autofillCompleted = true;
+    setTimeout(() => stopAutofill(), 1000);
+    return;
+  }
+  
+  if (submitBtn) {
+    try {
+      submitBtn.scrollIntoView({ block: 'center', inline: 'center' });
+    } catch {}
+    await sleep(rand(300, 600));
+    submitBtn.click();
+    showNotification('✅ Safe Browsing: Đã fill và tự động submit! (Check reCAPTCHA nếu có)');
+  } else {
+    showNotification('⚠️ Safe Browsing: Đã fill xong nhưng không tìm thấy nút Submit');
+  }
+  
+  // Đánh dấu hoàn tất để dừng autofill
+  autofillCompleted = true;
+  setTimeout(() => stopAutofill(), 1000);
 };
 
 const fillFormGeneric = (data) => {
@@ -1207,10 +1266,14 @@ const fillFormGeneric = (data) => {
   }
 
   if (filled > 0) {
-    showNotification(`Auto-filled ${filled} field(s). Please complete captcha and submit.`);
+    showNotification(`✅ Auto-filled ${filled} field(s). Please complete captcha and submit.`);
   } else {
-    showNotification('Could not auto-fill fields. Please fill manually.');
+    showNotification('⚠️ Could not auto-fill fields. Please fill manually.');
   }
+  
+  // Đánh dấu hoàn tất để dừng autofill
+  autofillCompleted = true;
+  setTimeout(() => stopAutofill(), 1000);
 };
 
 const fillForm = async (data) => {
@@ -1254,11 +1317,15 @@ let autofillObserver = null;
 let autofillRunning = false;
 let autofillPending = false;
 let autofillLastAttemptAt = 0;
+let autofillAttemptCount = 0;
+let autofillCompleted = false;
 
 const stopAutofill = () => {
   autofillState = null;
   autofillPending = false;
   autofillRunning = false;
+  autofillCompleted = false;
+  autofillAttemptCount = 0;
   if (autofillObserver) {
     try {
       autofillObserver.disconnect();
@@ -1269,7 +1336,12 @@ const stopAutofill = () => {
 
 const runAutofill = async () => {
   if (!autofillState) return;
+  if (autofillCompleted) {
+    stopAutofill();
+    return;
+  }
   if (Date.now() > autofillState.until) {
+    console.log('⏱️ Autofill timeout reached, stopping');
     stopAutofill();
     return;
   }
@@ -1277,28 +1349,59 @@ const runAutofill = async () => {
     autofillPending = true;
     return;
   }
-  if (Date.now() - autofillLastAttemptAt < 650) return;
+  
+  // Giới hạn số lần thử để tránh spam
+  if (autofillAttemptCount >= 5) {
+    console.log('✋ Max autofill attempts reached (5), stopping to avoid spam');
+    showNotification('Auto-fill hoàn tất. Vui lòng kiểm tra và submit thủ công.');
+    autofillCompleted = true;
+    stopAutofill();
+    return;
+  }
+  
+  if (Date.now() - autofillLastAttemptAt < 1500) return; // Tăng delay từ 650ms → 1.5s
+  
   autofillLastAttemptAt = Date.now();
+  autofillAttemptCount++;
   autofillRunning = true;
+  
+  console.log(`🔄 Autofill attempt ${autofillAttemptCount}/5`);
+  
   try {
     await fillForm(autofillState.payload);
+    
+    // Sau khi fill xong, đợi 3s rồi dừng hẳn (không fill lại nữa)
+    setTimeout(() => {
+      if (autofillAttemptCount >= 2) {
+        console.log('✅ Autofill completed after', autofillAttemptCount, 'attempts');
+        autofillCompleted = true;
+        stopAutofill();
+      }
+    }, 3000);
+    
   } finally {
     autofillRunning = false;
-    if (autofillPending) {
+    if (autofillPending && !autofillCompleted) {
       autofillPending = false;
-      setTimeout(() => runAutofill(), 500);
+      setTimeout(() => runAutofill(), 1000);
     }
   }
 };
 
 const scheduleAutofill = (payload) => {
-  autofillState = { payload, until: Date.now() + 90_000 };
+  // Reset counters
+  autofillAttemptCount = 0;
+  autofillCompleted = false;
+  
+  autofillState = { payload, until: Date.now() + 30_000 }; // Giảm từ 90s → 30s
   try {
     chrome.runtime.sendMessage({ action: 'setTabPayload', payload });
   } catch {}
   if (!autofillObserver) {
     autofillObserver = new MutationObserver(() => {
-      runAutofill();
+      if (!autofillCompleted) {
+        runAutofill();
+      }
     });
     try {
       autofillObserver.observe(document.documentElement || document.body, {
@@ -1308,7 +1411,12 @@ const scheduleAutofill = (payload) => {
     } catch {}
   }
   runAutofill();
-  setTimeout(() => stopAutofill(), 95_000);
+  setTimeout(() => {
+    if (!autofillCompleted) {
+      console.log('⏱️ Auto-stop after 30s');
+      stopAutofill();
+    }
+  }, 30_000); // Giảm từ 95s → 30s
 };
 
 const tryRestorePayloadFromBackground = () =>

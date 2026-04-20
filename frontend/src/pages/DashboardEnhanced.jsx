@@ -1517,15 +1517,66 @@ const Dashboard = () => {
                         message.warning('Không có service active');
                         return;
                       }
-                      message.info('Mở nhiều tab có thể bị popup blocker. Nếu bị chặn, hãy bấm từng service.');
-                      activeServices.forEach((s, i) => {
-                        setTimeout(() => {
-                          openReportTabAndAutofill(s.reportUrl, buildAutofillPayload(s.reportUrl));
-                        }, i * 700);
+                      
+                      // Bước 1: Mở tất cả tabs CÙNG LÚC (tránh popup blocker)
+                      const openedTabs = [];
+                      activeServices.forEach((s) => {
+                        const payload = buildAutofillPayload(s.reportUrl);
+                        const encodePayload = (obj) => {
+                          const json = JSON.stringify(obj || {});
+                          const utf8 = encodeURIComponent(json).replace(/%([0-9A-F]{2})/g, (_, p1) =>
+                            String.fromCharCode(parseInt(p1, 16)),
+                          );
+                          const b64 = btoa(utf8);
+                          return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+                        };
+                        
+                        const encoded = encodePayload(payload);
+                        let urlToOpen = s.reportUrl;
+                        try {
+                          const u = new URL(s.reportUrl);
+                          const params = new URLSearchParams(String(u.hash || '').replace(/^#/, ''));
+                          params.set('dar', encoded);
+                          u.hash = params.toString();
+                          urlToOpen = u.toString();
+                        } catch (e) {
+                          void e;
+                        }
+                        
+                        // Unique name để không bị ghi đè
+                        const uniqueName = `dar_${s._id}_${Date.now()}_${Math.random()}`;
+                        const tab = window.open(urlToOpen, uniqueName);
+                        if (tab) {
+                          openedTabs.push({ tab, payload, service: s.name });
+                        }
                       });
+                      
+                      if (openedTabs.length < activeServices.length) {
+                        message.warning(`Chỉ mở được ${openedTabs.length}/${activeServices.length} tabs. Cho phép popups và thử lại.`);
+                        return;
+                      }
+                      
+                      message.success(`✓ Đã mở ${openedTabs.length} tabs. Extension sẽ tự fill tuần tự...`);
+                      
+                      // Bước 2: Gửi message TUẦN TỰ với delay để extension xử lý tốt
+                      // Delay đầu tiên: chờ tabs load
+                      setTimeout(() => {
+                        openedTabs.forEach(({ tab, payload, service }, index) => {
+                          // Delay giữa mỗi tab: 2s
+                          setTimeout(() => {
+                            try {
+                              const msg = { type: 'FILL_REPORT_FORM', payload };
+                              tab.postMessage(msg, '*');
+                              console.log(`[${index + 1}/${openedTabs.length}] Sent fill message to: ${service}`);
+                            } catch (e) {
+                              console.error(`Failed to send message to ${service}:`, e);
+                            }
+                          }, index * 2000); // 2s giữa mỗi tab
+                        });
+                      }, 3000); // 3s chờ tabs load xong
                     }}
                   >
-                    Open All Services
+                    Open All Services ({reportServices.filter((s) => s.active !== false).length})
                   </Button>
                   <Button
                     onClick={() => {
