@@ -8,7 +8,12 @@ import { join } from 'path';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  app.enableCors();
+  // 🔥 CORS cho dev + ngrok
+  app.enableCors({
+    origin: '*',
+  });
+
+  // 🔥 API prefix đồng bộ với FE proxy /api
   app.setGlobalPrefix('api');
 
   app.useGlobalPipes(
@@ -19,17 +24,21 @@ async function bootstrap() {
     }),
   );
 
+  // 🔥 đảm bảo folder tồn tại
   if (!fs.existsSync('screenshots')) {
     fs.mkdirSync('screenshots', { recursive: true });
   }
 
-  app.useStaticAssets(join(process.cwd(), 'screenshots'), { prefix: '/screenshots' });
+  app.useStaticAssets(join(process.cwd(), 'screenshots'), {
+    prefix: '/screenshots',
+  });
 
   const port = process.env.PORT || 3000;
-  await app.listen(port);
 
-  console.log(`🚀 Application is running on: http://localhost:${port}`);
-  console.log(`📁 Screenshots will be saved to: ${process.cwd()}/screenshots`);
+  // 🔥 QUAN TRỌNG: cho phép access từ ngrok / máy khác
+  await app.listen(port, '0.0.0.0');
+
+  console.log(`🚀 Backend running: http://localhost:${port}`);
 }
 
 bootstrap();

@@ -6,29 +6,22 @@ import { fileURLToPath } from 'node:url';
 export default defineConfig(({ mode }) => {
   const rootDir = dirname(fileURLToPath(import.meta.url));
   const env = loadEnv(mode, rootDir, '');
-  const apiBaseUrl = env.VITE_API_BASE_URL || '';
 
-  let proxyTarget = 'http://localhost:3000';
-  if (apiBaseUrl.startsWith('http://') || apiBaseUrl.startsWith('https://')) {
-    try {
-      const url = new URL(apiBaseUrl);
-      proxyTarget = `${url.protocol}//${url.host}`;
-    } catch {
-      proxyTarget = 'http://localhost:3001';
-    }
-  }
-
-  if (env.VITE_PROXY_TARGET) {
-    proxyTarget = env.VITE_PROXY_TARGET;
-  }
+  // 👉 ưu tiên env cho dễ switch ngrok/local
+  const proxyTarget = env.VITE_PROXY_TARGET || 'http://localhost:3000';
 
   return {
     plugins: [react()],
+
     server: {
+      host: true,
       port: 5173,
+
+      allowedHosts: true, // ✅ QUAN TRỌNG
+
       proxy: {
         '/api': {
-          target: proxyTarget,
+          target: 'http://localhost:3000',
           changeOrigin: true,
         },
       },
