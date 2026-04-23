@@ -14,7 +14,8 @@
     "https://safebrowsing.google.com/*",
     "https://reportcontent.google.com/*",
     "https://abuse.cloudflare.com/*",
-    "https://abuse.radix.website/*"
+    "https://abuse.radix.website/*",
+    "https://2captcha.com/*"
   ],
   "background": {
     "service_worker": "background.js"

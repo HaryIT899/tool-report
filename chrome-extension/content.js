@@ -270,6 +270,458 @@ const handleCloudflareRegistrarWhois = async (payload) => {
   setTimeout(() => stopAutofill(), 1000);
 };
 
+const handleCloudflareThreat = async (payload) => {
+  console.log('[Cloudflare Threat] Starting autofill...');
+  await sleep(rand(500, 1200));
+  
+  const email = normText(payload.email);
+  const name = normText(payload.name);
+  const title = normText(payload.title);
+  const company = normText(payload.company);
+  const phone = normText(payload.phone);
+  const urlsValue = normText(payload.infringingUrls || payload.domain);
+  const justificationValue = normText(payload.reason).slice(0, 2000);
+  const commentsValue = normText(payload.reason).slice(0, 1000); // Use reason for comments too
+
+  const type = async (selector, value) => {
+    const el = document.querySelector(selector);
+    if (!el || !value) return false;
+    try {
+      el.scrollIntoView({ block: 'center', inline: 'center' });
+    } catch {}
+    await sleep(rand(80, 250));
+    return typeLikeHuman(el, value);
+  };
+
+  // Fill all text fields
+  if (name) await type('input[name="name"]', name);
+  if (email) {
+    await type('input[name="email"]', email);
+    await type('input[name="email2"]', email);
+  }
+  if (title) await type('input[name="title"]', title);
+  if (company) await type('input[name="company"]', company);
+  if (phone) await type('input[name="tele"]', phone);
+  
+  if (urlsValue) await type('textarea[name="urls"]', urlsValue);
+  if (justificationValue) await type('textarea[name="justification"]', justificationValue);
+  if (commentsValue) await type('textarea[name="comments"]', commentsValue);
+
+  // Check the required checkboxes (IN CORRECT ORDER)
+  try {
+    await sleep(rand(300, 600));
+    
+    const labels = Array.from(document.querySelectorAll('label'));
+    console.log('[Cloudflare Threat] Found', labels.length, 'labels');
+    
+    // STEP 1: Check parent checkboxes first (to enable child checkboxes)
+    const parentCheckboxes = [
+      'please forward my report to the website hosting provider',
+      'please forward my report to the website owner'
+    ];
+    
+    for (const text of parentCheckboxes) {
+      const label = labels.find((l) => 
+        normText(l.textContent).toLowerCase().includes(text)
+      );
+      if (label) {
+        const checkbox = label.querySelector('input[type="checkbox"]');
+        if (checkbox && !checkbox.checked) {
+          try {
+            label.scrollIntoView({ block: 'center', inline: 'center' });
+          } catch {}
+          await sleep(rand(200, 400));
+          checkbox.click();
+          console.log('[Cloudflare Threat] Checked parent:', text);
+          await sleep(rand(300, 500)); // Wait for child checkbox to appear
+        }
+      }
+    }
+    
+    // STEP 2: Check child checkboxes (include name)
+    await sleep(rand(400, 800));
+    
+    const childCheckboxes = [
+      'include my name and contact information with the report to the website hosting provider',
+      'include my name and contact information with the report to the website owner'
+    ];
+    
+    for (const text of childCheckboxes) {
+      const label = labels.find((l) => 
+        normText(l.textContent).toLowerCase().includes(text)
+      );
+      if (label) {
+        const checkbox = label.querySelector('input[type="checkbox"]');
+        if (checkbox && !checkbox.checked) {
+          try {
+            label.scrollIntoView({ block: 'center', inline: 'center' });
+          } catch {}
+          await sleep(rand(150, 300));
+          checkbox.click();
+          console.log('[Cloudflare Threat] Checked child:', text);
+        }
+      }
+    }
+    
+    // STEP 3: Check "I understand and agree"
+    await sleep(rand(300, 600));
+    
+    const agreeLabel = labels.find((l) => 
+      normText(l.textContent).toLowerCase().includes('i understand and agree')
+    );
+    if (agreeLabel) {
+      const checkbox = agreeLabel.querySelector('input[type="checkbox"]');
+      if (checkbox && !checkbox.checked) {
+        try {
+          agreeLabel.scrollIntoView({ block: 'center', inline: 'center' });
+        } catch {}
+        await sleep(rand(150, 300));
+        checkbox.click();
+        console.log('[Cloudflare Threat] Checked: I understand and agree');
+      }
+    }
+  } catch (e) {
+    console.log('[Cloudflare Threat] Checkbox error:', e);
+  }
+
+  // Handle Cloudflare Turnstile captcha
+  await sleep(rand(800, 1500));
+  
+  const turnstileWidget = document.getElementById('turnstile_widget');
+  const turnstileResponseInput = document.querySelector('input[name="cf-turnstile-response"]');
+  
+  if (turnstileWidget && turnstileResponseInput) {
+    console.log('[Cloudflare Threat] Found Turnstile captcha');
+    
+    // Check if Turnstile uses Shadow DOM (closed)
+    const hasShadowRoot = !!turnstileWidget.querySelector('template[shadowrootmode="closed"]');
+    if (hasShadowRoot) {
+      console.log('[Cloudflare Threat] ⚠️ Turnstile uses closed Shadow DOM - cannot bypass automatically');
+      showNotification('⏸️ Vui lòng CLICK vào checkbox "Xác minh bạn là con người" để tiếp tục...');
+      
+      // Wait for user to solve Turnstile (monitor token appearance)
+      let userSolveCount = 0;
+      const maxUserChecks = 90; // 90 seconds
+      
+      while (userSolveCount < maxUserChecks) {
+        await sleep(1000);
+        userSolveCount++;
+        
+        const currentResponse = document.querySelector('input[name="cf-turnstile-response"]')?.value || '';
+        
+        if (userSolveCount % 10 === 0) {
+          console.log(`[Cloudflare Threat] Waiting for user Turnstile solve... ${userSolveCount}/90s`);
+          if (userSolveCount % 30 === 0) {
+            showNotification(`⏳ Vẫn đang đợi... (${userSolveCount}/90s)`);
+          }
+        }
+        
+        if (currentResponse.length > 10) {
+          console.log('[Cloudflare Threat] ✓ User solved Turnstile!');
+          showNotification('✅ Turnstile đã xác minh! Đang submit...');
+          await sleep(rand(1000, 2000));
+          break;
+        }
+      }
+      
+      // Final check
+      const finalResponse = document.querySelector('input[name="cf-turnstile-response"]')?.value || '';
+      if (finalResponse.length <= 10) {
+        showNotification('⏱️ Timeout: Vui lòng xác minh Turnstile và submit thủ công.');
+        autofillCompleted = true;
+        setTimeout(() => stopAutofill(), 1000);
+        return;
+      }
+      
+      // Auto submit after user solved
+      await sleep(rand(1000, 2000));
+      
+      const submitBtn = document.querySelector('button[type="submit"]');
+      if (submitBtn && !submitBtn.disabled) {
+        try {
+          submitBtn.scrollIntoView({ block: 'center', inline: 'center' });
+        } catch {}
+        await sleep(rand(300, 600));
+        submitBtn.click();
+        console.log('[Cloudflare Threat] Submit clicked after user solved Turnstile!');
+        showNotification('✅ Cloudflare Threat: Đã submit!');
+      } else {
+        showNotification('✅ Cloudflare Threat: Đã fill xong. Vui lòng click Submit.');
+      }
+      
+      autofillCompleted = true;
+      setTimeout(() => stopAutofill(), 1000);
+      return;
+    }
+    
+    // If no shadow root, continue with old logic
+    const siteKey = turnstileWidget.getAttribute('data-sitekey');
+    if (!siteKey) {
+      console.error('[Cloudflare Threat] No sitekey found');
+      showNotification('❌ Không tìm thấy Turnstile sitekey');
+      autofillCompleted = true;
+      setTimeout(() => stopAutofill(), 1000);
+      return;
+    }
+    
+    console.log('[Cloudflare Threat] Turnstile sitekey:', siteKey);
+    
+    // Try to trigger Turnstile by clicking on it
+    showNotification('🔄 Đang trigger Cloudflare Turnstile...');
+    console.log('[Cloudflare Threat] Triggering Turnstile...');
+    
+    try {
+      // Method 1: Click on the Turnstile widget container
+      turnstileWidget.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      await sleep(rand(500, 1000));
+      
+      // Try clicking different elements
+      const clickableElements = [
+        turnstileWidget.querySelector('iframe'),
+        turnstileWidget.querySelector('label'),
+        turnstileWidget.querySelector('input[type="checkbox"]'),
+        turnstileWidget
+      ];
+      
+      for (const el of clickableElements) {
+        if (el) {
+          try {
+            el.click();
+            console.log('[Cloudflare Threat] Clicked:', el.tagName);
+          } catch {}
+        }
+      }
+      
+      // Method 2: Dispatch mouse events on widget
+      const rect = turnstileWidget.getBoundingClientRect();
+      const clickX = rect.left + rect.width / 2;
+      const clickY = rect.top + rect.height / 2;
+      
+      ['mousedown', 'mouseup', 'click'].forEach(eventType => {
+        const event = new MouseEvent(eventType, {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          clientX: clickX,
+          clientY: clickY
+        });
+        turnstileWidget.dispatchEvent(event);
+      });
+      
+      console.log('[Cloudflare Threat] Dispatched mouse events');
+    } catch (e) {
+      console.log('[Cloudflare Threat] Click error:', e);
+    }
+    
+    // Wait for Turnstile to auto-solve after trigger
+    showNotification('⏳ Đang đợi Cloudflare Turnstile xác minh...');
+    console.log('[Cloudflare Threat] Waiting for Turnstile to solve...');
+    
+    // Poll for Turnstile response
+    let solveCount = 0;
+    const maxSolveChecks = 30; // 30 seconds
+    let autoSolved = false;
+    
+    while (solveCount < maxSolveChecks) {
+      await sleep(1000);
+      solveCount++;
+      
+      const currentResponse = document.querySelector('input[name="cf-turnstile-response"]')?.value || '';
+      
+      if (solveCount % 5 === 0) {
+        console.log(`[Cloudflare Threat] Turnstile check ${solveCount}/30:`, {
+          hasResponse: currentResponse.length > 10,
+          responseLength: currentResponse.length
+        });
+      }
+      
+      if (currentResponse.length > 10) {
+        console.log('[Cloudflare Threat] Turnstile auto-solved!');
+        showNotification('✅ Turnstile đã xác minh! Đang submit...');
+        autoSolved = true;
+        break;
+      }
+    }
+    
+    if (!autoSolved) {
+      // Turnstile didn't auto-solve, try 2Captcha
+      showNotification('🔄 Đang giải Turnstile với 2Captcha...');
+      console.log('[Cloudflare Threat] Auto-solve failed, trying 2Captcha...');
+      
+      try {
+        const response = await chrome.runtime.sendMessage({
+          action: 'solve_turnstile',
+          siteKey: siteKey,
+          pageUrl: window.location.href
+        });
+        
+        if (response.success && response.token) {
+          console.log('[Cloudflare Threat] 2Captcha solved! Token:', response.token.substring(0, 50) + '...');
+          
+          // Method 1: Inject token into hidden input
+          turnstileResponseInput.value = response.token;
+          
+          // Update all related inputs
+          const allTurnstileInputs = document.querySelectorAll('input[name="cf-turnstile-response"]');
+          allTurnstileInputs.forEach(input => {
+            input.value = response.token;
+          });
+          
+          console.log('[Cloudflare Threat] Token injected, attempting callbacks...');
+          
+          // Method 2: Try to call Turnstile callback
+          try {
+            // Look for turnstile object
+            if (typeof window.turnstile !== 'undefined') {
+              console.log('[Cloudflare Threat] Found window.turnstile:', Object.keys(window.turnstile || {}));
+              
+              // Try to get widget ID from iframe
+              const iframe = turnstileWidget.querySelector('iframe');
+              if (iframe) {
+                const iframeId = iframe.id;
+                console.log('[Cloudflare Threat] Turnstile iframe ID:', iframeId);
+                
+                // Try to call response function
+                if (typeof window.turnstile.getResponse === 'function') {
+                  try {
+                    const widgetResponse = window.turnstile.getResponse(iframeId);
+                    console.log('[Cloudflare Threat] Current widget response:', widgetResponse);
+                  } catch {}
+                }
+              }
+            }
+            
+            // Look for callback function name in data attributes
+            const callbackName = turnstileWidget.getAttribute('data-callback');
+            console.log('[Cloudflare Threat] data-callback:', callbackName);
+            
+            if (callbackName && typeof window[callbackName] === 'function') {
+              console.log('[Cloudflare Threat] Calling callback function:', callbackName);
+              window[callbackName](response.token);
+            }
+            
+            // Try common callback names
+            const commonCallbacks = ['onTurnstileSuccess', 'turnstileCallback', 'onCaptchaSuccess'];
+            for (const cbName of commonCallbacks) {
+              if (typeof window[cbName] === 'function') {
+                console.log('[Cloudflare Threat] Trying callback:', cbName);
+                try {
+                  window[cbName](response.token);
+                } catch (e) {
+                  console.log('[Cloudflare Threat] Callback error:', cbName, e);
+                }
+              }
+            }
+          } catch (e) {
+            console.log('[Cloudflare Threat] Callback search error:', e);
+          }
+          
+          // Method 3: Trigger form validation
+          try {
+            const form = document.querySelector('form');
+            if (form) {
+              console.log('[Cloudflare Threat] Triggering form validation');
+              form.dispatchEvent(new Event('change', { bubbles: true }));
+              form.dispatchEvent(new Event('input', { bubbles: true }));
+              
+              // Also dispatch on turnstile input
+              turnstileResponseInput.dispatchEvent(new Event('input', { bubbles: true }));
+              turnstileResponseInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          } catch (e) {
+            console.log('[Cloudflare Threat] Form validation error:', e);
+          }
+          
+          // Method 4: Print current state for debugging
+          console.log('[Cloudflare Threat] Current state:', {
+            inputValue: turnstileResponseInput.value.substring(0, 50),
+            inputLength: turnstileResponseInput.value.length,
+            widgetHTML: turnstileWidget.outerHTML.substring(0, 200)
+          });
+          
+          showNotification('✅ Token injected. Đang đợi Cloudflare validate...');
+          await sleep(rand(3000, 5000)); // Wait longer for Cloudflare to validate
+          
+          // Check if submit button became enabled
+          const submitBtn = document.querySelector('button[type="submit"]');
+          if (submitBtn) {
+            const isDisabled = submitBtn.disabled || submitBtn.hasAttribute('disabled');
+            console.log('[Cloudflare Threat] Submit button state:', { disabled: isDisabled });
+            
+            if (isDisabled) {
+              showNotification('⚠️ Token đã inject nhưng form vẫn disabled. Vui lòng xác minh Turnstile thủ công.');
+              // Don't auto-submit if button is still disabled
+              autofillCompleted = true;
+              setTimeout(() => stopAutofill(), 1000);
+              return;
+            }
+          }
+          
+          showNotification('✅ Turnstile validated! Đang submit...');
+        } else {
+          console.error('[Cloudflare Threat] 2Captcha failed:', response.error);
+          showNotification('❌ 2Captcha lỗi: ' + response.error);
+          
+          // Fallback: wait for user
+          showNotification('⏸️ Vui lòng xác minh Turnstile thủ công...');
+          
+          let userSolveCount = 0;
+          const maxUserChecks = 60;
+          
+          while (userSolveCount < maxUserChecks) {
+            await sleep(1000);
+            userSolveCount++;
+            
+            const currentResponse = document.querySelector('input[name="cf-turnstile-response"]')?.value || '';
+            
+            if (currentResponse.length > 10) {
+              console.log('[Cloudflare Threat] User solved Turnstile!');
+              showNotification('✅ Turnstile đã xác minh! Đang submit...');
+              break;
+            }
+          }
+          
+          const finalResponse = document.querySelector('input[name="cf-turnstile-response"]')?.value || '';
+          if (finalResponse.length <= 10) {
+            showNotification('⏱️ Timeout: Vui lòng submit thủ công.');
+            autofillCompleted = true;
+            setTimeout(() => stopAutofill(), 1000);
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('[Cloudflare Threat] 2Captcha error:', error);
+        showNotification('❌ Lỗi: ' + error.message);
+        autofillCompleted = true;
+        setTimeout(() => stopAutofill(), 1000);
+        return;
+      }
+    }
+    
+    // Auto submit
+    await sleep(rand(1000, 2000));
+    
+    const submitBtn = document.querySelector('button[type="submit"]');
+    if (submitBtn) {
+      try {
+        submitBtn.scrollIntoView({ block: 'center', inline: 'center' });
+      } catch {}
+      await sleep(rand(300, 600));
+      submitBtn.click();
+      console.log('[Cloudflare Threat] Submit clicked!');
+      showNotification('✅ Cloudflare Threat: Đã fill và submit!');
+    } else {
+      showNotification('✅ Cloudflare Threat: Đã fill xong. Vui lòng click Submit.');
+    }
+  } else {
+    // No captcha found, just notify
+    showNotification('✅ Cloudflare Threat: Đã fill xong. Hãy kiểm tra và submit.');
+  }
+  
+  autofillCompleted = true;
+  setTimeout(() => stopAutofill(), 1000);
+};
+
 const handleRadixAbuse = async (payload) => {
   await sleep(rand(600, 1300));
   const domain = normText(payload.domain);
@@ -393,9 +845,10 @@ const handleGoogleDmca = async (payload) => {
   }
 
   const firstName = normText(payload.firstName);
-  const lastName = normText(payload.lastName);
+  // DMCA: lastName lấy từ signature field, signature thật = firstName + lastName
+  const lastName = normText(payload.signature || payload.lastName);
   const company = normText(payload.company);
-  const signature = normText(payload.signature);
+  const dmcaSignature = [firstName, lastName].filter(Boolean).join(' ').trim();
   const workDescription = normText(payload.workDescription || payload.reason);
   const authorizedUrl = normText(payload.authorizedUrl);
   const infringingUrls = normText(payload.infringingUrls || payload.domain);
@@ -409,11 +862,29 @@ const handleGoogleDmca = async (payload) => {
     return typeLikeHuman(el, val);
   };
 
-  await typeIf(findInputByAriaContains('input', ['first name', 'tên']), firstName);
-  await sleep(rand(400, 1100));
-  await typeIf(findInputByAriaContains('input', ['last name', 'họ']), lastName);
-  await sleep(rand(400, 1100));
-  await typeIf(findInputByAriaContains('input', ['company name', 'company']), company);
+  // Fill all input fields by looping through all inputs with aria-label
+  const allInputs = Array.from(document.querySelectorAll('input[aria-label]'));
+  
+  for (const input of allInputs) {
+    const label = (input.getAttribute('aria-label') || '').toLowerCase();
+    let value = null;
+    
+    if (label.includes('first') && label.includes('name')) {
+      value = firstName;
+    } else if (label.includes('last') && label.includes('name')) {
+      value = lastName;
+    } else if (label.includes('company') || label.includes('organization')) {
+      value = company;
+    } else if (label.includes('signature') || label.includes('chữ ký')) {
+      value = dmcaSignature;
+    }
+    
+    if (value && !input.value) {
+      await typeIf(input, value);
+      await sleep(rand(300, 800));
+    }
+  }
+  
   await sleep(rand(400, 1100));
 
   const workDescEl =
@@ -434,14 +905,496 @@ const handleGoogleDmca = async (payload) => {
   await typeIf(infrEl, infringingUrls);
   await sleep(rand(400, 1100));
 
-  await typeIf(findInputByAriaContains('input', ['signature', 'chữ ký']), signature);
+  // Select "Yes" radio button FIRST (before checkboxes, as it may show/hide fields)
+  try {
+    await sleep(rand(300, 600));
+    
+    // Try to find radio by role="radio"
+    const radioElements = Array.from(document.querySelectorAll('[role="radio"]'));
+    console.log('[DMCA] Found radio elements:', radioElements.length);
+    
+    for (const radio of radioElements) {
+      // Get text from .content div, not from the icon
+      const contentDiv = radio.querySelector('.content');
+      const text = contentDiv ? normText(contentDiv.textContent || '').toLowerCase() : '';
+      const ariaLabel = (radio.getAttribute('aria-label') || '').toLowerCase();
+      
+      // Look for "Yes" radio button
+      const isYes = text === 'yes' || text === 'có' || text.includes('yes') ||
+                    ariaLabel.includes('yes') || ariaLabel.includes('có');
+      
+      console.log('[DMCA] Radio text:', text, 'aria-label:', ariaLabel, 'isYes:', isYes, 'checked:', radio.getAttribute('aria-checked'));
+      
+      if (isYes && radio.getAttribute('aria-checked') !== 'true') {
+        try {
+          radio.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        } catch {}
+        await sleep(rand(200, 400));
+        radio.click();
+        console.log('[DMCA] Clicked Yes radio');
+        await sleep(rand(400, 800));
+        break;
+      }
+    }
+  } catch (e) {
+    console.log('[DMCA] Radio error:', e);
+  }
 
-  showNotification('✅ DMCA filled. Hãy tự review, tick checkbox nếu có, rồi submit.');
+  // Fill date field
+  try {
+    await sleep(rand(400, 800));
+    
+    // Click on the date selector button
+    const dateButton = document.querySelector('[aria-label*="Signed on this date"]');
+    if (dateButton) {
+      console.log('[DMCA] Found date button, clicking...');
+      try {
+        dateButton.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      } catch {}
+      await sleep(rand(300, 600));
+      dateButton.click();
+      await sleep(rand(800, 1500));
+      
+      // Wait for date picker popup to appear, then find the date input
+      // Look for input inside material-input with label "Date"
+      const dateInputs = Array.from(document.querySelectorAll('material-input input[type="text"]'));
+      const dateInput = dateInputs.find(inp => {
+        const labelId = inp.getAttribute('aria-labelledby');
+        if (!labelId) return false;
+        const labelEl = document.getElementById(labelId);
+        return labelEl && normText(labelEl.textContent).toLowerCase() === 'date';
+      });
+      
+      if (dateInput) {
+        const today = new Date();
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const formattedDate = `${months[today.getMonth()]} ${today.getDate()}, ${today.getFullYear()}`;
+        
+        console.log('[DMCA] Filling date:', formattedDate);
+        
+        // Clear first
+        dateInput.value = '';
+        dateInput.focus();
+        await sleep(rand(200, 400));
+        
+        // Type the date
+        await typeLikeHuman(dateInput, formattedDate);
+        await sleep(rand(400, 800));
+        
+        // Press Enter to confirm
+        dateInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+        dateInput.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', keyCode: 13, bubbles: true }));
+        await sleep(rand(600, 1000));
+        
+        console.log('[DMCA] Date filled and confirmed');
+      } else {
+        console.log('[DMCA] Date input not found in popup');
+      }
+    }
+  } catch (e) {
+    console.log('[DMCA] Date error:', e);
+  }
+
+  // Check all required checkboxes
+  try {
+    await sleep(rand(400, 800));
+    
+    const checkboxes = Array.from(document.querySelectorAll('material-checkbox[role="checkbox"]'));
+    console.log('[DMCA] Found checkboxes:', checkboxes.length);
+    
+    for (const cb of checkboxes) {
+      const isChecked = cb.getAttribute('aria-checked') === 'true';
+      const label = cb.getAttribute('aria-labelledby') || '';
+      
+      console.log('[DMCA] Checkbox:', label, 'checked:', isChecked);
+      
+      if (!isChecked) {
+        try {
+          cb.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        } catch {}
+        await sleep(rand(200, 400));
+        cb.click();
+        console.log('[DMCA] Clicked checkbox:', label);
+        await sleep(rand(300, 600));
+      }
+    }
+  } catch (e) {
+    console.log('[DMCA] Checkbox error:', e);
+  }
+
+  // Solve reCAPTCHA and auto-submit
+  try {
+    await sleep(rand(1500, 2500));
+    
+    // Find reCAPTCHA site key (with retry to wait for iframe load)
+    const captchaInfo = await new Promise(async (resolve) => {
+      let attempts = 0;
+      const maxAttempts = 10;
+      
+      const checkCaptcha = async () => {
+        attempts++;
+        console.log(`[DMCA] Checking for captcha (attempt ${attempts}/${maxAttempts})...`);
+        
+        // Method 1: Check for recaptcha anchor (visible element)
+        const recaptchaAnchor = document.getElementById('recaptcha-anchor');
+        const rcContainer = document.getElementById('rc-anchor-container');
+        
+        if (recaptchaAnchor || rcContainer) {
+          console.log('[DMCA] Found reCAPTCHA anchor element');
+          
+          // Try to find iframe with site key
+          const iframes = document.querySelectorAll('iframe[src*="recaptcha"], iframe[src*="google.com/recaptcha"]');
+          console.log('[DMCA] Found reCAPTCHA iframes:', iframes.length);
+          
+          for (const iframe of iframes) {
+            const src = iframe.src;
+            console.log('[DMCA] Checking iframe src:', src.substring(0, 100));
+            const match = src.match(/[?&]k=([^&]+)/);
+            if (match) {
+              const siteKey = match[1];
+              console.log('[DMCA] Found reCAPTCHA site key:', siteKey);
+              resolve({ found: true, siteKey });
+              return;
+            }
+          }
+        }
+        
+        // Method 2: Check for textarea response (in case loaded differently)
+        const responses = document.querySelectorAll('textarea[name="g-recaptcha-response"]');
+        if (responses.length > 0) {
+          console.log('[DMCA] Found g-recaptcha-response textareas:', responses.length);
+          
+          // Check if already solved
+          for (const resp of responses) {
+            if (resp.value && resp.value.length > 10) {
+              console.log('[DMCA] Captcha already solved');
+              resolve({ found: false, alreadySolved: true });
+              return;
+            }
+          }
+          
+          // Try to extract site key from parent element attributes
+          const container = responses[0].closest('[data-sitekey]') || 
+                           responses[0].closest('.g-recaptcha') ||
+                           document.querySelector('[data-sitekey]');
+          
+          if (container) {
+            const siteKey = container.getAttribute('data-sitekey');
+            if (siteKey) {
+              console.log('[DMCA] Found site key from container:', siteKey);
+              resolve({ found: true, siteKey });
+              return;
+            }
+          }
+        }
+        
+        // Retry if not found yet
+        if (attempts < maxAttempts) {
+          await sleep(1000);
+          checkCaptcha();
+        } else {
+          console.log('[DMCA] No captcha found after', maxAttempts, 'attempts');
+          resolve({ found: false });
+        }
+      };
+      
+      checkCaptcha();
+    });
+    
+    if (captchaInfo.alreadySolved) {
+      showNotification('✅ DMCA filled. Captcha đã giải, có thể submit!');
+      await autoSubmitDmca();
+      return;
+    }
+    
+    if (captchaInfo.found) {
+      // Show notification asking user to click
+      showNotification('⏸️ Vui lòng CLICK vào checkbox "I\'m not a robot" để tiếp tục...');
+      console.log('[DMCA] Waiting for user to click reCAPTCHA checkbox...');
+      
+      // Close any existing challenge windows first (reset state)
+      try {
+        const existingChallenges = document.querySelectorAll('iframe[src*="bframe"]');
+        console.log('[DMCA] Closing', existingChallenges.length, 'existing challenge frames');
+        existingChallenges.forEach(frame => {
+          try {
+            frame.style.display = 'none';
+            frame.remove();
+          } catch {}
+        });
+      } catch {}
+      
+      // Wait a bit for DOM to settle
+      await sleep(500);
+      
+      // Capture initial state AFTER cleanup
+      const initialChallengeFrame = document.querySelector('iframe[src*="recaptcha/enterprise/bframe"], iframe[src*="recaptcha/api2/bframe"]');
+      const initialCheckboxState = document.querySelector('#recaptcha-anchor')?.getAttribute('aria-checked');
+      const initialTextareaValue = document.querySelector('textarea[name="g-recaptcha-response"]')?.value || '';
+      
+      console.log('[DMCA] Initial state:', {
+        hasChallengeFrame: !!initialChallengeFrame,
+        checkboxState: initialCheckboxState,
+        hasToken: initialTextareaValue.length > 10
+      });
+      
+      // Wait for user to click the checkbox (poll for STATE CHANGE)
+      const waitForUserClick = async () => {
+        return new Promise(async (resolve) => {
+          let checkCount = 0;
+          const maxChecks = 60; // Wait up to 60 seconds
+          
+          const checkInterval = setInterval(() => {
+            checkCount++;
+            
+            // Method 1: Check for CHANGE in challenge frame (bframe appeared)
+            const challengeFrame = document.querySelector('iframe[src*="recaptcha/enterprise/bframe"], iframe[src*="recaptcha/api2/bframe"]');
+            const challengeAppeared = !initialChallengeFrame && challengeFrame;
+            
+            // Method 2: Check for CHANGE in checkbox state (unchecked → checked)
+            const checkbox = document.querySelector('#recaptcha-anchor');
+            const currentCheckboxState = checkbox?.getAttribute('aria-checked');
+            const checkboxChanged = initialCheckboxState !== 'true' && currentCheckboxState === 'true';
+            
+            // Method 3: Check if NEW token appeared (wasn't there before)
+            const currentTextarea = document.querySelector('textarea[name="g-recaptcha-response"]');
+            const currentToken = currentTextarea?.value || '';
+            const tokenAppeared = initialTextareaValue.length <= 10 && currentToken.length > 10;
+            
+            // Method 4: Check for NEW visible challenge elements (wasn't there in initial state)
+            const challengeElements = document.querySelectorAll('.rc-imageselect-challenge, .rc-imageselect-payload, .rc-audiochallenge-tdownload-link');
+            const challengeVisible = challengeElements.length > 0;
+            
+            // Method 5: Check if checkbox spinner is active (loading state = user just clicked)
+            const spinner = document.querySelector('.recaptcha-checkbox-spinner, .recaptcha-checkbox-spinner-gif');
+            const spinnerActive = spinner && window.getComputedStyle(spinner).opacity !== '0';
+            
+            console.log(`[DMCA] Check ${checkCount}/60:`, {
+              challengeAppeared,
+              checkboxChanged,
+              tokenAppeared,
+              challengeVisible,
+              spinnerActive,
+              currentCheckboxState,
+              currentTokenLength: currentToken.length
+            });
+            
+            // Only trigger if there's a REAL change
+            if (challengeAppeared || checkboxChanged || tokenAppeared || challengeVisible || spinnerActive) {
+              console.log('[DMCA] ✓ User action detected!');
+              clearInterval(checkInterval);
+              resolve(true);
+              return;
+            }
+            
+            if (checkCount >= maxChecks) {
+              console.log('[DMCA] Timeout waiting for user click');
+              clearInterval(checkInterval);
+              resolve(false);
+            }
+          }, 1000);
+        });
+      };
+      
+      const userClicked = await waitForUserClick();
+      
+      if (!userClicked) {
+        showNotification('⏱️ Timeout: Bạn chưa click checkbox. Vui lòng click và refresh lại.');
+        autofillCompleted = true;
+        setTimeout(() => stopAutofill(), 1000);
+        return;
+      }
+      
+      // Check if token already appeared (instant solve without challenge)
+      const textareas = document.querySelectorAll('textarea[name="g-recaptcha-response"]');
+      let instantSolved = false;
+      for (const textarea of textareas) {
+        if (textarea.value && textarea.value.length > 10) {
+          instantSolved = true;
+          console.log('[DMCA] ✓ Captcha instantly solved by Google!');
+          break;
+        }
+      }
+      
+      if (instantSolved) {
+        showNotification('✅ Captcha đã giải! Đang submit...');
+        await sleep(rand(2000, 3000));
+        await autoSubmitDmca();
+        autofillCompleted = true;
+        setTimeout(() => stopAutofill(), 1000);
+        return;
+      }
+      
+      // Wait for challenge iframe to fully load
+      showNotification('🖼️ Vui lòng CHỌN HÌNH trong challenge reCAPTCHA...');
+      await sleep(rand(2000, 3000));
+      
+      // Check if challenge frame exists
+      const challengeFrame = document.querySelector('iframe[src*="recaptcha/enterprise/bframe"], iframe[src*="recaptcha/api2/bframe"]');
+      if (!challengeFrame) {
+        showNotification('❌ Không tìm thấy challenge frame. Vui lòng giải captcha thủ công.');
+        autofillCompleted = true;
+        setTimeout(() => stopAutofill(), 1000);
+        return;
+      }
+      
+      console.log('[DMCA] Challenge appeared, waiting for user to solve...');
+      
+      // Wait for user to solve the challenge (monitor for token appearance or challenge close)
+      const waitForChallengeSolved = async () => {
+        return new Promise(async (resolve) => {
+          let checkCount = 0;
+          const maxChecks = 120; // Wait up to 2 minutes
+          
+          const checkInterval = setInterval(() => {
+            checkCount++;
+            
+            // Check if token appeared (user solved challenge)
+            const currentTextarea = document.querySelector('textarea[name="g-recaptcha-response"]');
+            const currentToken = currentTextarea?.value || '';
+            const tokenSolved = currentToken.length > 10;
+            
+            // Check if challenge frame disappeared (closed)
+            const currentChallengeFrame = document.querySelector('iframe[src*="bframe"]');
+            const challengeClosed = !currentChallengeFrame;
+            
+            // Check if checkbox is now checked
+            const checkbox = document.querySelector('#recaptcha-anchor');
+            const isChecked = checkbox?.getAttribute('aria-checked') === 'true';
+            
+            if (checkCount % 10 === 0) {
+              console.log(`[DMCA] Waiting for challenge solve... ${checkCount}/120:`, {
+                tokenSolved,
+                challengeClosed,
+                isChecked,
+                tokenLength: currentToken.length
+              });
+            }
+            
+            if (tokenSolved || (challengeClosed && isChecked)) {
+              console.log('[DMCA] ✓ Challenge solved by user!');
+              clearInterval(checkInterval);
+              resolve(true);
+              return;
+            }
+            
+            if (checkCount >= maxChecks) {
+              console.log('[DMCA] Timeout waiting for challenge solve');
+              clearInterval(checkInterval);
+              resolve(false);
+            }
+          }, 1000);
+        });
+      };
+      
+      const challengeSolved = await waitForChallengeSolved();
+      
+      if (!challengeSolved) {
+        showNotification('⏱️ Timeout: Bạn chưa giải xong challenge. Vui lòng thử lại.');
+        autofillCompleted = true;
+        setTimeout(() => stopAutofill(), 1000);
+        return;
+      }
+      
+      showNotification('✅ Challenge đã giải! Đang submit...');
+      await sleep(rand(2000, 3000));
+      
+      // Auto submit
+      await autoSubmitDmca();
+    } else {
+      showNotification('✅ DMCA filled. Không tìm thấy captcha, có thể submit!');
+    }
+  } catch (e) {
+    console.log('[DMCA] Captcha solve error:', e);
+    showNotification('❌ Lỗi: ' + e.message);
+  }
   
-  // Đánh dấu hoàn tất để dừng autofill
+  // Đánh dấu hoàn tất
   autofillCompleted = true;
   setTimeout(() => stopAutofill(), 1000);
 };
+
+// Auto submit DMCA form
+async function autoSubmitDmca() {
+  try {
+    // Wait and retry to check if button becomes enabled
+    let submitButton = null;
+    let attempts = 0;
+    const maxAttempts = 10; // Increase from 5 to 10 attempts
+    
+    while (attempts < maxAttempts) {
+      attempts++;
+      await sleep(rand(2000, 3000));
+      
+      submitButton = document.querySelector('button[data-test-id="submit-button"]');
+      if (submitButton) {
+        const isDisabled = submitButton.disabled || submitButton.getAttribute('aria-disabled') === 'true';
+        console.log(`[DMCA] Submit button check (attempt ${attempts}/${maxAttempts}):`, {
+          disabled: submitButton.disabled,
+          ariaDisabled: submitButton.getAttribute('aria-disabled'),
+          classList: submitButton.className
+        });
+        
+        if (!isDisabled) {
+          console.log('[DMCA] Button is enabled!');
+          break;
+        } else {
+          console.log('[DMCA] Button still disabled, waiting...');
+        }
+      }
+    }
+    
+    if (submitButton) {
+      console.log('[DMCA] Preparing to click submit button');
+      
+      // Force enable button anyway
+      submitButton.disabled = false;
+      submitButton.removeAttribute('disabled');
+      submitButton.setAttribute('aria-disabled', 'false');
+      
+      try {
+        submitButton.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      } catch {}
+      await sleep(rand(500, 1000));
+      
+      // Try multiple click methods
+      console.log('[DMCA] Clicking submit button...');
+      
+      // Method 1: Direct click
+      submitButton.click();
+      
+      // Method 2: Dispatch click event
+      submitButton.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        view: window
+      }));
+      
+      // Method 3: Dispatch pointer events
+      submitButton.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      submitButton.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+      
+      console.log('[DMCA] Submit button clicked!');
+      
+      // Wait and check if form submitted
+      await sleep(rand(1000, 2000));
+      
+      const newUrl = window.location.href;
+      if (newUrl !== location.href || document.body.innerText.includes('Thank you') || 
+          document.body.innerText.includes('submitted')) {
+        showNotification('✅ Form đã submit thành công!');
+      } else {
+        showNotification('⚠️ Đã click Submit, vui lòng kiểm tra form');
+      }
+    } else {
+      console.log('[DMCA] Submit button not found');
+      showNotification('⚠️ Không tìm thấy nút Submit, hãy submit thủ công');
+    }
+  } catch (e) {
+    console.log('[DMCA] Submit error:', e);
+    showNotification('❌ Lỗi submit: ' + e.message);
+  }
+}
 
 const handleGoogleSearchConsoleSpam = async (payload) => {
   await sleep(rand(600, 1200));
@@ -1298,6 +2251,10 @@ const fillForm = async (data) => {
   }
   if (url.includes('abuse.cloudflare.com/registrar_whois')) {
     await handleCloudflareRegistrarWhois(payload);
+    return;
+  }
+  if (url.includes('abuse.cloudflare.com/threat')) {
+    await handleCloudflareThreat(payload);
     return;
   }
   if (url.includes('abuse.radix.website')) {

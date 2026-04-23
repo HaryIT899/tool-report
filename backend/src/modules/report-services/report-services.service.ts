@@ -32,12 +32,6 @@ export class ReportServicesService implements OnModuleInit {
 
   async seedServices(): Promise<void> {
     try {
-      const count = await this.reportServiceModel.countDocuments().exec();
-      if (count > 0) {
-        this.logger.log('Report services already exist, skipping seed');
-        return;
-      }
-
       const services = [
         {
           name: 'Google Spam',
@@ -57,18 +51,18 @@ export class ReportServicesService implements OnModuleInit {
           type: 'autofill_supported',
           active: true,
         },
-        // {
-        //   name: 'Google DMCA',
-        //   reportUrl: 'https://reportcontent.google.com/forms/dmca_search',
-        //   type: 'autofill_supported',
-        //   active: true,
-        // },
-        // {
-        //   name: 'Cloudflare Abuse',
-        //   reportUrl: 'https://abuse.cloudflare.com/',
-        //   type: 'autofill_supported',
-        //   active: true,
-        // },
+        {
+          name: 'Google DMCA',
+          reportUrl: 'https://reportcontent.google.com/forms/dmca_search',
+          type: 'autofill_supported',
+          active: true,
+        },
+        {
+          name: 'Cloudflare Abuse',
+          reportUrl: 'https://abuse.cloudflare.com/threat',
+          type: 'autofill_supported',
+          active: true,
+        },
         {
           name: 'Radix Abuse',
           reportUrl: 'https://abuse.radix.website/',
@@ -77,8 +71,21 @@ export class ReportServicesService implements OnModuleInit {
         },
       ];
 
-      await this.reportServiceModel.insertMany(services);
-      this.logger.log('Report services seeded successfully');
+      let addedCount = 0;
+      for (const service of services) {
+        const exists = await this.reportServiceModel.findOne({ name: service.name }).exec();
+        if (!exists) {
+          await this.reportServiceModel.create(service);
+          this.logger.log(`Added new service: ${service.name}`);
+          addedCount++;
+        }
+      }
+
+      if (addedCount > 0) {
+        this.logger.log(`Report services seeded: ${addedCount} new service(s) added`);
+      } else {
+        this.logger.log('All report services already exist, no changes needed');
+      }
     } catch (e) {
       this.logger.error(`Report services seeding failed: ${e.message}`);
     }

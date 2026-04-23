@@ -92,6 +92,43 @@ export async function handleGoogleDmcaSearch(
     if (lastNameEl) await humanType(page, lastNameEl, lastName);
     if (companyEl) await humanType(page, companyEl, company);
 
+    // Fallback: Fill name fields by aria-label directly
+    await page.evaluate(
+      (first, last, comp) => {
+        const inputs = Array.from(document.querySelectorAll('input[aria-label]')) as HTMLInputElement[];
+        
+        const firstInput = inputs.find(i => 
+          (i.getAttribute('aria-label') || '').toLowerCase().includes('first name')
+        );
+        const lastInput = inputs.find(i => 
+          (i.getAttribute('aria-label') || '').toLowerCase().includes('last name')
+        );
+        const compInput = inputs.find(i => {
+          const label = (i.getAttribute('aria-label') || '').toLowerCase();
+          return label.includes('company') || label.includes('organization');
+        });
+
+        if (firstInput && !firstInput.value) {
+          firstInput.value = first;
+          firstInput.dispatchEvent(new Event('input', { bubbles: true }));
+          firstInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        if (lastInput && !lastInput.value) {
+          lastInput.value = last;
+          lastInput.dispatchEvent(new Event('input', { bubbles: true }));
+          lastInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        if (compInput && !compInput.value) {
+          compInput.value = comp;
+          compInput.dispatchEvent(new Event('input', { bubbles: true }));
+          compInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      },
+      firstName,
+      lastName,
+      company,
+    );
+
     // Fill textareas
     const workDescEl = await findTextarea(page, [
       'describe the copyrighted work',
@@ -160,10 +197,7 @@ export async function handleGoogleDmcaSearch(
       console.log('[DMCA] Date select error:', e?.message);
     }
 
-    // Check all checkboxes and radios
-    await checkAllCheckboxes(page);
-
-    // Select "myself" radio if present
+    // Select "myself" radio if present (do this BEFORE checkboxes)
     await page.evaluate(() => {
       const radios = Array.from(document.querySelectorAll('[role="radio"]')) as HTMLElement[];
       const myself = radios.find((r) => {
@@ -174,6 +208,24 @@ export async function handleGoogleDmcaSearch(
         myself.click();
       }
     });
+
+    await sleep(getRandomDelay(500, 800));
+
+    // Check all checkboxes - including the 3 required ones
+    await page.evaluate(() => {
+      const checkboxes = Array.from(
+        document.querySelectorAll('material-checkbox[role="checkbox"]')
+      ) as HTMLElement[];
+      
+      checkboxes.forEach((cb) => {
+        if (cb.getAttribute('aria-checked') !== 'true') {
+          cb.click();
+        }
+      });
+    });
+
+    // Fallback: also check standard checkboxes
+    await checkAllCheckboxes(page);
 
     // Fill signature (derived from name fields)
     const signatureValue = await page.evaluate(() => {
