@@ -50,24 +50,56 @@ export async function handleSearchConsoleSpam(
         return (
           text.includes('step 2/2') ||
           text.includes('step 2 of 2') ||
+          !!document.querySelector('input#c121') ||
+          !!document.querySelector('textarea#c125') ||
           !!document.querySelector('input[placeholder*="Exact query"]') ||
-          !!document.querySelector('textarea[placeholder*="anything else"]')
+          !!document.querySelector('textarea[placeholder*="anything else"]') ||
+          !!document.querySelector('input.VfPpkd-fmcmS-wGMbrd[type="text"]')
         );
       });
 
     // Helper to select reason radio button
     const selectReason = async (text: string) => {
+      // Try multiple strategies to find and click the option
+      
+      // Strategy 1: Find li with role="option" containing the text
+      const clickedOption = await page.evaluate((targetText) => {
+        const wanted = targetText.trim().toLowerCase();
+        const options = Array.from(document.querySelectorAll('li[role="option"]')) as HTMLElement[];
+        
+        for (const option of options) {
+          const optionText = (option.innerText || option.textContent || '').trim().toLowerCase();
+          if (optionText.includes(wanted)) {
+            option.scrollIntoView({ block: 'center', inline: 'center' });
+            option.click();
+            return true;
+          }
+        }
+        return false;
+      }, text);
+
+      if (clickedOption) {
+        await sleep(getRandomDelay(300, 600));
+        return true;
+      }
+
+      // Strategy 2: XPath approach
       const clicked = await clickFirstXPath(page, [
+        `//*[normalize-space(.)="${text}"]//ancestor::*[@role="option"][1]`,
+        `//*[@role="option" and contains(., "${text}")]`,
         `//*[normalize-space(.)="${text}"]//ancestor::*[@role="radio" or @role="button" or self::label or self::button][1]`,
         `//*[normalize-space(.)="${text}"]`,
       ]);
 
-      if (clicked) return true;
+      if (clicked) {
+        await sleep(getRandomDelay(300, 600));
+        return true;
+      }
 
-      // Fallback: evaluate click
+      // Strategy 3: Find any element with role="radio" containing the text
       return await page.evaluate((targetText) => {
         const wanted = targetText.trim().toLowerCase();
-        const radios = Array.from(document.querySelectorAll('[role="radio"]')) as HTMLElement[];
+        const radios = Array.from(document.querySelectorAll('[role="radio"], [role="option"]')) as HTMLElement[];
         const match = radios.find((r) =>
           (r.innerText || '').trim().toLowerCase().includes(wanted),
         );
@@ -81,16 +113,42 @@ export async function handleSearchConsoleSpam(
     };
 
     // Helper to click Continue button
-    const clickContinue = async () =>
-      page.evaluate(() => {
+    const clickContinue = async () => {
+      // Strategy 1: Find button by class "VfPpkd-RLmnJb" (the div that represents the button ripple)
+      const clickedByClass = await page.evaluate(() => {
+        // Look for the parent button of VfPpkd-RLmnJb div
+        const rippleDiv = document.querySelector('div.VfPpkd-RLmnJb');
+        if (rippleDiv) {
+          const btn = rippleDiv.closest('button') as HTMLButtonElement;
+          if (btn) {
+            const disabled = btn.disabled || btn.getAttribute('aria-disabled') === 'true';
+            if (!disabled) {
+              btn.scrollIntoView({ block: 'center', inline: 'center' });
+              btn.click();
+              return { found: true, disabled: false };
+            }
+            return { found: true, disabled: true };
+          }
+        }
+        return null;
+      });
+
+      if (clickedByClass) return clickedByClass;
+
+      // Strategy 2: Standard approach - find by text
+      return page.evaluate(() => {
         const btn = Array.from(document.querySelectorAll('button,[role="button"],a')).find((e) =>
           (e.textContent || '').trim().toLowerCase().includes('continue'),
         ) as HTMLElement | undefined;
         if (!btn) return { found: false, disabled: false };
         const disabled = !!(btn as any).disabled || btn.getAttribute('aria-disabled') === 'true';
-        if (!disabled) btn.click();
+        if (!disabled) {
+          btn.scrollIntoView({ block: 'center', inline: 'center' });
+          btn.click();
+        }
         return { found: true, disabled };
       });
+    };
 
     // Try to progress through step 1 with human-like behavior
     const preferred = 'Other';
@@ -149,8 +207,10 @@ export async function handleSearchConsoleSpam(
     await sleep(getRandomDelay(1500, 2500));
 
     const queryInput = await findVisibleElement(page, [
+      'input#c121',
       'input[placeholder*="Exact query"]',
       'input[aria-label*="Exact query"]',
+      'input.VfPpkd-fmcmS-wGMbrd',
     ]);
 
     if (queryInput) {
@@ -166,8 +226,10 @@ export async function handleSearchConsoleSpam(
     await sleep(getRandomDelay(1000, 1800));
 
     const detailsArea = await findVisibleElement(page, [
+      'textarea#c125',
       'textarea[placeholder*="anything else"]',
       'textarea[aria-label*="anything else"]',
+      'textarea.VfPpkd-fmcmS-wGMbrd',
       'textarea',
     ]);
 
@@ -189,7 +251,27 @@ export async function handleSearchConsoleSpam(
     // Final review before clicking submit (very important pause)
     await sleep(getRandomDelay(2000, 4000));
     
-    await clickButtonByText(page, ['Next', 'Continue', 'Submit', 'Report', 'Send']);
+    // Try to find and click submit button
+    const submitClicked = await page.evaluate(() => {
+      // Strategy 1: Find by VfPpkd-RLmnJb class (Material Design button ripple)
+      const rippleDivs = Array.from(document.querySelectorAll('div.VfPpkd-RLmnJb'));
+      for (const rippleDiv of rippleDivs) {
+        const btn = rippleDiv.closest('button') as HTMLButtonElement;
+        if (btn && !btn.disabled && btn.getAttribute('aria-disabled') !== 'true') {
+          const text = (btn.textContent || '').trim().toLowerCase();
+          if (text.includes('submit') || text.includes('next') || text.includes('continue') || text.includes('report') || text.includes('send')) {
+            btn.scrollIntoView({ block: 'center', inline: 'center' });
+            btn.click();
+            return true;
+          }
+        }
+      }
+      return false;
+    });
+
+    if (!submitClicked) {
+      await clickButtonByText(page, ['Next', 'Continue', 'Submit', 'Report', 'Send']);
+    }
 
     // Wait for submission with longer delay
     await sleep(getRandomDelay(2500, 4000));

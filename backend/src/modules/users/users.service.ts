@@ -23,4 +23,20 @@ export class UsersService {
   async findById(id: string): Promise<UserDocument | null> {
     return this.userModel.findById(id).exec();
   }
+
+  async updateProfile(id: string, profileData: Partial<User>): Promise<UserDocument> {
+    return this.userModel.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          name: profileData.name,
+          company: profileData.company,
+          phone: profileData.phone,
+          title: profileData.title,
+          signature: profileData.signature,
+        },
+      },
+      { new: true },
+    ).exec();
+  }
 }

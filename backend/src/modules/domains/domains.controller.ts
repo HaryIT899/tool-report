@@ -44,6 +44,15 @@ export class DomainsController {
     return this.domainsService.update(id, updateDomainDto, req.user.userId);
   }
 
+  @Patch(':id/urls')
+  async updateUrls(
+    @Param('id') id: string,
+    @Body() urls: { authorizedUrl?: string; infringingUrls?: string; workDescription?: string },
+    @Request() req,
+  ) {
+    return this.domainsService.updateUrls(id, req.user.userId, urls);
+  }
+
   @Delete(':id')
   async delete(@Param('id') id: string, @Request() req) {
     await this.domainsService.delete(id, req.user.userId);

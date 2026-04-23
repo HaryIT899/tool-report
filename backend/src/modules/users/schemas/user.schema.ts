@@ -17,6 +17,22 @@ export class User {
   @Prop({ default: 'user' })
   role: string;
 
+  // Profile information for autofill
+  @Prop()
+  name?: string;
+
+  @Prop()
+  company?: string;
+
+  @Prop()
+  phone?: string;
+
+  @Prop()
+  title?: string;
+
+  @Prop()
+  signature?: string;
+
   @Prop()
   createdAt: Date;
 }

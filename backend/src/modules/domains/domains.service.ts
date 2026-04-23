@@ -175,6 +175,30 @@ export class DomainsService {
     return domain;
   }
 
+  async updateUrls(
+    id: string,
+    userId: string,
+    urls: { authorizedUrl?: string; infringingUrls?: string; workDescription?: string },
+  ): Promise<DomainDocument> {
+    const domain = await this.domainModel
+      .findOneAndUpdate(
+        { _id: id, createdBy: userId },
+        {
+          $set: {
+            authorizedUrl: urls.authorizedUrl,
+            infringingUrls: urls.infringingUrls,
+            workDescription: urls.workDescription,
+          },
+        },
+        { new: true },
+      )
+      .exec();
+    if (!domain) {
+      throw new NotFoundException('Domain not found');
+    }
+    return domain;
+  }
+
   async delete(id: string, userId: string): Promise<void> {
     const result = await this.domainModel.deleteOne({ _id: id, createdBy: userId }).exec();
     if (result.deletedCount === 0) {

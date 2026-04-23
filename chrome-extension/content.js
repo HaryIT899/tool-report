@@ -1410,41 +1410,194 @@ const handleGoogleSearchConsoleSpam = async (payload) => {
   const urlToReport = host ? `https://${host}` : '';
 
   const getPhase2Els = () => {
-    const queryEl =
-      document.querySelector('input[jsname="YPqjbf"][type="text"][placeholder*="Cụm từ tìm kiếm" i]') ||
-      document.querySelector('input[jsname="YPqjbf"][type="text"][aria-label*="Cụm từ tìm kiếm" i]') ||
-      document.querySelector('#c301') ||
-      document.querySelector('input[placeholder*="Cụm từ tìm kiếm" i]') ||
-      document.querySelector('input[aria-label*="Cụm từ tìm kiếm" i]') ||
-      null;
-    const detailEl =
-      document.querySelector('textarea[jsname="YPqjbf"][placeholder*="Có điều gì khác" i]') ||
-      document.querySelector('textarea[jsname="YPqjbf"][aria-label*="Có điều gì khác" i]') ||
-      document.querySelector('#c305') ||
-      document.querySelector('textarea[placeholder*="Có điều gì khác" i]') ||
-      document.querySelector('textarea[aria-label*="Có điều gì khác" i]') ||
-      null;
+    // Try multiple strategies to find Phase 2 inputs
+    let queryEl = null;
+    let detailEl = null;
+    
+    // Strategy 1: By placeholder text (MOST RELIABLE - doesn't change)
+    const allInputs = Array.from(document.querySelectorAll('input[jsname="YPqjbf"][type="text"]'));
+    queryEl = allInputs.find(inp => {
+      const placeholder = (inp.getAttribute('placeholder') || '').toLowerCase();
+      return placeholder.includes('exact query') || 
+             placeholder.includes('exact query that shows the problem') ||
+             placeholder.includes('cụm từ');
+    });
+    
+    const allTextareas = Array.from(document.querySelectorAll('textarea[jsname="YPqjbf"]'));
+    detailEl = allTextareas.find(ta => {
+      const placeholder = (ta.getAttribute('placeholder') || '').toLowerCase();
+      return placeholder.includes('anything else') || 
+             placeholder.includes('is there anything else') ||
+             placeholder.includes('điều gì');
+    });
+    
+    if (queryEl && detailEl) {
+      console.log('✓ Found Phase 2 elements by placeholder:', {
+        queryId: queryEl.id,
+        detailId: detailEl.id
+      });
+      return { queryEl, detailEl };
+    }
+    
+    // Strategy 2: By Material Design class + visibility check
+    if (!queryEl) {
+      const materialInputs = Array.from(document.querySelectorAll('input.VfPpkd-fmcmS-wGMbrd[type="text"]'));
+      queryEl = materialInputs.find(inp => {
+        const rect = inp.getBoundingClientRect();
+        const visible = rect.width > 0 && rect.height > 0;
+        const notUrlInput = !inp.getAttribute('type') || inp.getAttribute('type') !== 'url';
+        return visible && notUrlInput;
+      });
+      console.log('Query input found by Material class:', !!queryEl);
+    }
+    
+    if (!detailEl) {
+      const materialTextareas = Array.from(document.querySelectorAll('textarea.VfPpkd-fmcmS-wGMbrd[maxlength="300"]'));
+      detailEl = materialTextareas.find(ta => {
+        const rect = ta.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      });
+      console.log('Detail textarea found by Material class:', !!detailEl);
+    }
+    
+    if (queryEl && detailEl) {
+      console.log('✓ Found Phase 2 elements by Material class');
+      return { queryEl, detailEl };
+    }
+    
+    // Strategy 3: By jsname="YPqjbf" + position (query is first, detail is second)
+    if (!queryEl || !detailEl) {
+      const allJsnameInputs = Array.from(document.querySelectorAll('input[jsname="YPqjbf"][type="text"]'));
+      const allJsnameTextareas = Array.from(document.querySelectorAll('textarea[jsname="YPqjbf"]'));
+      
+      // Get visible ones only
+      const visibleInputs = allJsnameInputs.filter(inp => {
+        const rect = inp.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      });
+      
+      const visibleTextareas = allJsnameTextareas.filter(ta => {
+        const rect = ta.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      });
+      
+      if (visibleInputs.length > 0 && !queryEl) {
+        queryEl = visibleInputs[0]; // First visible input
+        console.log('Query input found by position (first visible)');
+      }
+      
+      if (visibleTextareas.length > 0 && !detailEl) {
+        detailEl = visibleTextareas[0]; // First visible textarea
+        console.log('Detail textarea found by position (first visible)');
+      }
+    }
+    
+    if (queryEl && detailEl) {
+      console.log('✓ Found Phase 2 elements by position');
+      return { queryEl, detailEl };
+    }
+    
+    console.log('❌ Phase 2 elements search failed:', { 
+      foundQuery: !!queryEl, 
+      foundDetail: !!detailEl,
+      availableInputs: document.querySelectorAll('input[jsname="YPqjbf"]').length,
+      availableTextareas: document.querySelectorAll('textarea[jsname="YPqjbf"]').length
+    });
+    
     return { queryEl, detailEl };
   };
 
   const getOptionOther = () => {
+    // Try multiple strategies to find "Other" option
+    
+    // Strategy 1: Find by jsname and class (most specific)
     const options = Array.from(document.querySelectorAll('li[role="option"][jsname="Fs2VSc"]'));
     const other = options.find((li) => {
       const t = normText(li.textContent || '').toLowerCase();
-      return t === 'khác' || t.includes('khác');
+      return t === 'khác' || t.includes('khác') || t === 'other' || t.includes('other');
     });
-    return other || null;
+    if (other) return other;
+    
+    // Strategy 2: Find by class MCs1Pd (Material Design list item)
+    const materialOptions = Array.from(document.querySelectorAll('li.MCs1Pd[role="option"]'));
+    const materialOther = materialOptions.find((li) => {
+      const t = normText(li.textContent || '').toLowerCase();
+      return t === 'khác' || t.includes('khác') || t === 'other' || t.includes('other');
+    });
+    if (materialOther) return materialOther;
+    
+    // Strategy 3: Find by aria-selected attribute
+    const allOptions = Array.from(document.querySelectorAll('li[role="option"][aria-selected]'));
+    return allOptions.find((li) => {
+      const t = normText(li.textContent || '').toLowerCase();
+      return t === 'khác' || t.includes('khác') || t === 'other' || t.includes('other');
+    }) || null;
   };
 
   const clickButtonByText = (text) => {
+    const targetText = text.toLowerCase();
+    
+    // Strategy 1: Find by VfPpkd-LgbsSe button class (Material Design filled button)
+    const materialButtons = Array.from(document.querySelectorAll('button.VfPpkd-LgbsSe'));
+    for (const btn of materialButtons) {
+      const btnText = normText(btn.textContent || '').toLowerCase();
+      const spanText = normText(btn.querySelector('span.VfPpkd-vQzf8d')?.textContent || '').toLowerCase();
+      if (btnText === targetText || btnText.includes(targetText) || spanText === targetText || spanText.includes(targetText)) {
+        try {
+          btn.scrollIntoView({ block: 'center', inline: 'center' });
+        } catch {}
+        btn.click();
+        console.log('✓ Clicked Material button:', btnText || spanText);
+        return true;
+      }
+    }
+    
+    // Strategy 2: Find by jsname="EwKiCc" (the specific button identifier)
+    const jsnameButtons = Array.from(document.querySelectorAll('button[jsname="EwKiCc"]'));
+    for (const btn of jsnameButtons) {
+      const btnText = normText(btn.textContent || '').toLowerCase();
+      if (btnText === targetText || btnText.includes(targetText)) {
+        try {
+          btn.scrollIntoView({ block: 'center', inline: 'center' });
+        } catch {}
+        btn.click();
+        console.log('✓ Clicked jsname button:', btnText);
+        return true;
+      }
+    }
+    
+    // Strategy 3: Find Material Design button by VfPpkd-RLmnJb div (ripple effect)
+    const rippleDivs = Array.from(document.querySelectorAll('div.VfPpkd-RLmnJb'));
+    for (const rippleDiv of rippleDivs) {
+      const btn = rippleDiv.closest('button');
+      if (btn) {
+        const btnText = normText(btn.textContent || '').toLowerCase();
+        if (btnText === targetText || btnText.includes(targetText)) {
+          try {
+            btn.scrollIntoView({ block: 'center', inline: 'center' });
+          } catch {}
+          btn.click();
+          console.log('✓ Clicked ripple button:', btnText);
+          return true;
+        }
+      }
+    }
+    
+    // Strategy 4: Standard text-based search
     const btn =
-      findByText('button', (t) => t.toLowerCase() === text.toLowerCase()) ||
-      findByText('button span', (t) => t.toLowerCase() === text.toLowerCase())?.closest('button') ||
+      findByText('button', (t) => t.toLowerCase() === targetText) ||
+      findByText('button span', (t) => t.toLowerCase() === targetText)?.closest('button') ||
       null;
     if (btn) {
+      try {
+        btn.scrollIntoView({ block: 'center', inline: 'center' });
+      } catch {}
       btn.click();
+      console.log('✓ Clicked standard button');
       return true;
     }
+    
+    console.log('❌ Button not found:', text);
     return false;
   };
 
@@ -1474,21 +1627,70 @@ const handleGoogleSearchConsoleSpam = async (payload) => {
       }
     }
 
-    await waitFor(() => !!getOptionOther() || !!findByText('button', (t) => t.toLowerCase() === 'tiếp tục'), 60, 350);
+    await waitFor(() => !!getOptionOther() || !!findByText('button', (t) => t.toLowerCase() === 'tiếp tục' || t.toLowerCase() === 'continue'), 60, 350);
 
     const opt = getOptionOther();
     if (opt) {
+      console.log('✓ Found "Other" option, clicking...');
       try {
         opt.scrollIntoView({ block: 'center', inline: 'center' });
       } catch {}
       await sleep(rand(120, 350));
       try {
         opt.click();
-      } catch {}
+        console.log('✓ "Other" option clicked');
+      } catch (e) {
+        console.log('❌ Error clicking "Other" option:', e);
+      }
+    } else {
+      console.log('❌ "Other" option not found');
     }
 
-    await sleep(rand(250, 600));
-    clickButtonByText('Tiếp tục');
+    await sleep(rand(500, 800));
+    
+    // Try to click Continue button with retry logic
+    console.log('Attempting to click Continue button...');
+    let continueClicked = false;
+    
+    // Try Vietnamese first
+    continueClicked = clickButtonByText('Tiếp tục');
+    
+    // If failed, try English
+    if (!continueClicked) {
+      await sleep(rand(300, 500));
+      continueClicked = clickButtonByText('Continue');
+    }
+    
+    // If still failed, try lowercase
+    if (!continueClicked) {
+      await sleep(rand(300, 500));
+      continueClicked = clickButtonByText('continue');
+    }
+    
+    // Final fallback: Try to find button with specific class combination
+    if (!continueClicked) {
+      await sleep(rand(300, 500));
+      console.log('Trying final fallback: finding button by class...');
+      const finalBtn = document.querySelector('button.VfPpkd-LgbsSe[jsname="EwKiCc"]') ||
+                       document.querySelector('button.VfPpkd-LgbsSe.nCP5yc.AjY5Oe') ||
+                       document.querySelector('button[jscontroller="soHxf"]');
+      if (finalBtn) {
+        try {
+          finalBtn.scrollIntoView({ block: 'center', inline: 'center' });
+        } catch {}
+        await sleep(rand(200, 400));
+        finalBtn.click();
+        continueClicked = true;
+        console.log('✓ Continue button clicked via fallback');
+      }
+    }
+    
+    if (continueClicked) {
+      console.log('✓ Continue button clicked successfully');
+    } else {
+      console.log('❌ Failed to click Continue button');
+      showNotification('⚠️ Không tìm thấy nút Continue. Vui lòng bấm thủ công.');
+    }
 
     await waitFor(
       () =>
@@ -1505,16 +1707,75 @@ const handleGoogleSearchConsoleSpam = async (payload) => {
     .replace(/\/.*$/, '');
   const detail = normText(payload.reason).slice(0, 300);
 
+  console.log('Waiting for Phase 2 fields...', { query: q, detail: detail });
+
+  // Wait longer for Phase 2 to fully load
   await waitFor(() => {
     const els = getPhase2Els();
+    console.log('Phase 2 check:', { hasQueryEl: !!els.queryEl, hasDetailEl: !!els.detailEl });
     return !!els.queryEl || !!els.detailEl;
-  }, 60, 350);
+  }, 80, 400);
+
+  // Extra delay to ensure DOM is ready
+  await sleep(rand(800, 1200));
 
   let { queryEl, detailEl } = getPhase2Els();
-  if (queryEl && q) await typeLikeHuman(queryEl, q);
-  await sleep(rand(300, 800));
+  console.log('Phase 2 elements found:', { 
+    queryEl: queryEl ? queryEl.id || queryEl.className : 'NOT FOUND',
+    detailEl: detailEl ? detailEl.id || detailEl.className : 'NOT FOUND' 
+  });
+
+  if (!queryEl || !detailEl) {
+    console.log('❌ Phase 2 fields not found! Available inputs:', {
+      allInputs: document.querySelectorAll('input[type="text"]').length,
+      allTextareas: document.querySelectorAll('textarea').length
+    });
+    showNotification('⚠️ Không tìm thấy input fields ở Step 2. Vui lòng fill thủ công.');
+    
+    // Try one more time after longer delay
+    await sleep(2000);
+    ({ queryEl, detailEl } = getPhase2Els());
+    
+    if (!queryEl || !detailEl) {
+      autofillCompleted = true;
+      setTimeout(() => stopAutofill(), 1000);
+      return;
+    }
+    console.log('✓ Found Phase 2 fields after retry');
+  }
+
+  showNotification('✓ Tìm thấy fields Step 2, đang fill...');
+
+  // Fill query field
+  if (queryEl && q) {
+    console.log('Filling query field with:', q);
+    try {
+      queryEl.scrollIntoView({ block: 'center', inline: 'center' });
+    } catch {}
+    await sleep(rand(300, 500));
+    await typeLikeHuman(queryEl, q);
+    console.log('✓ Query field filled');
+  } else {
+    console.log('❌ Cannot fill query field:', { hasElement: !!queryEl, hasValue: !!q });
+  }
+
+  await sleep(rand(500, 1000));
+
+  // Re-query elements in case DOM changed
   ({ queryEl, detailEl } = getPhase2Els());
-  if (detailEl && detail) await typeLikeHuman(detailEl, detail);
+  
+  // Fill detail field
+  if (detailEl && detail) {
+    console.log('Filling detail field with:', detail.substring(0, 50) + '...');
+    try {
+      detailEl.scrollIntoView({ block: 'center', inline: 'center' });
+    } catch {}
+    await sleep(rand(300, 500));
+    await typeLikeHuman(detailEl, detail);
+    console.log('✓ Detail field filled');
+  } else {
+    console.log('❌ Cannot fill detail field:', { hasElement: !!detailEl, hasValue: !!detail });
+  }
 
   await sleep(rand(300, 800));
   const shouldSubmit = payload.autoSubmit === true;
@@ -1532,12 +1793,48 @@ const handleGoogleSearchConsoleSpam = async (payload) => {
         return;
       }
     }
-    const ok = clickButtonByText('Gửi');
-    showNotification(ok ? 'Google Spam: đã bấm Gửi.' : 'Google Spam: đã fill, không thấy nút Gửi (hãy bấm tay).');
+    // Try to click Submit button with multiple strategies
+    console.log('Attempting to click Submit button...');
+    let submitClicked = false;
+    
+    // Strategy 1: Try by jsname="sFeBqf" (specific submit button identifier)
+    const submitByJsname = document.querySelector('button[jsname="sFeBqf"]');
+    if (submitByJsname) {
+      try {
+        submitByJsname.scrollIntoView({ block: 'center', inline: 'center' });
+      } catch {}
+      await sleep(rand(300, 500));
+      submitByJsname.click();
+      submitClicked = true;
+      console.log('✓ Submit clicked via jsname="sFeBqf"');
+    }
+    
+    // Strategy 2: Try Vietnamese "Gửi"
+    if (!submitClicked) {
+      submitClicked = clickButtonByText('Gửi');
+    }
+    
+    // Strategy 3: Try English "Submit"
+    if (!submitClicked) {
+      await sleep(rand(300, 500));
+      submitClicked = clickButtonByText('Submit');
+    }
+    
+    // Strategy 4: Try lowercase "submit"
+    if (!submitClicked) {
+      await sleep(rand(300, 500));
+      submitClicked = clickButtonByText('submit');
+    }
+    
+    showNotification(submitClicked ? '✅ Google Spam: đã bấm Submit!' : '⚠️ Google Spam: đã fill, không thấy nút Submit (hãy bấm tay).');
+    
+    // Đánh dấu hoàn tất
+    autofillCompleted = true;
+    setTimeout(() => stopAutofill(), 1000);
     return;
   }
 
-  showNotification('✅ Google Spam filled. Hãy kiểm tra lại rồi bấm Gửi.');
+  showNotification('✅ Google Spam filled. Hãy kiểm tra lại rồi bấm Gửi/Submit.');
   
   // Đánh dấu hoàn tất để dừng autofill
   autofillCompleted = true;

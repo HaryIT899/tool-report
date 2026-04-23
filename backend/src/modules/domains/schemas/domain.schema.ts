@@ -39,6 +39,15 @@ export class Domain {
   priority: number;
 
   @Prop()
+  authorizedUrl?: string;
+
+  @Prop()
+  infringingUrls?: string;
+
+  @Prop()
+  workDescription?: string;
+
+  @Prop()
   createdAt: Date;
 
   @Prop()

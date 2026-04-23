@@ -40,6 +40,7 @@ import {
   ApiOutlined,
   FileTextOutlined,
   EditOutlined,
+  SaveOutlined,
 } from '@ant-design/icons';
 import {
   accountsApi,
@@ -121,7 +122,7 @@ const Dashboard = () => {
             fetchQueueStats();
           })
           .catch(() => {
-            message.error('Failed to queue reports');
+            message.error('Không thể tạo hàng đợi report');
           });
       }
     };
@@ -136,15 +137,76 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (clientReportDrawerVisible) {
-      setClientReportEmail(localStorage.getItem('reporterEmail') || '');
-      setClientReportName(localStorage.getItem('reporterName') || '');
-      setClientReportCompany(localStorage.getItem('reporterCompany') || '');
-      setClientReportTitle(localStorage.getItem('reporterTitle') || '');
-      setClientReportPhone(localStorage.getItem('reporterPhone') || '');
-      setClientReportSignature(localStorage.getItem('reporterSignature') || '');
-      setClientReportAuthorizedUrl(localStorage.getItem('reporterAuthorizedUrl') || '');
-      setClientReportInfringingUrls(localStorage.getItem('reporterInfringingUrls') || '');
-      setClientReportWorkDescription(localStorage.getItem('reporterWorkDescription') || '');
+      // Fetch user profile from backend
+      const token = localStorage.getItem('token');
+      if (token) {
+        fetch(`${backendBaseUrl}/api/users/profile`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        })
+          .then(res => res.json())
+          .then(profile => {
+            // Use profile data if available, otherwise fallback to localStorage
+            setClientReportEmail(profile.email || user.email || localStorage.getItem('reporterEmail') || '');
+            setClientReportName(profile.name || localStorage.getItem('reporterName') || '');
+            setClientReportCompany(profile.company || localStorage.getItem('reporterCompany') || '');
+            setClientReportTitle(profile.title || localStorage.getItem('reporterTitle') || '');
+            setClientReportPhone(profile.phone || localStorage.getItem('reporterPhone') || '');
+            setClientReportSignature(profile.signature || localStorage.getItem('reporterSignature') || '');
+            
+            // Load URLs from domain if available
+            if (clientReportDomain) {
+              setClientReportAuthorizedUrl(clientReportDomain.authorizedUrl || '');
+              setClientReportInfringingUrls(clientReportDomain.infringingUrls || '');
+              setClientReportWorkDescription(clientReportDomain.workDescription || '');
+            } else {
+              setClientReportAuthorizedUrl(localStorage.getItem('reporterAuthorizedUrl') || '');
+              setClientReportInfringingUrls(localStorage.getItem('reporterInfringingUrls') || '');
+              setClientReportWorkDescription(localStorage.getItem('reporterWorkDescription') || '');
+            }
+          })
+          .catch(err => {
+            console.log('Failed to fetch profile, using localStorage', err);
+            // Fallback to localStorage if API fails
+            setClientReportEmail(localStorage.getItem('reporterEmail') || '');
+            setClientReportName(localStorage.getItem('reporterName') || '');
+            setClientReportCompany(localStorage.getItem('reporterCompany') || '');
+            setClientReportTitle(localStorage.getItem('reporterTitle') || '');
+            setClientReportPhone(localStorage.getItem('reporterPhone') || '');
+            setClientReportSignature(localStorage.getItem('reporterSignature') || '');
+            
+            // Load URLs from domain if available
+            if (clientReportDomain) {
+              setClientReportAuthorizedUrl(clientReportDomain.authorizedUrl || '');
+              setClientReportInfringingUrls(clientReportDomain.infringingUrls || '');
+              setClientReportWorkDescription(clientReportDomain.workDescription || '');
+            } else {
+              setClientReportAuthorizedUrl(localStorage.getItem('reporterAuthorizedUrl') || '');
+              setClientReportInfringingUrls(localStorage.getItem('reporterInfringingUrls') || '');
+              setClientReportWorkDescription(localStorage.getItem('reporterWorkDescription') || '');
+            }
+          });
+      } else {
+        // No token, use localStorage
+        setClientReportEmail(localStorage.getItem('reporterEmail') || '');
+        setClientReportName(localStorage.getItem('reporterName') || '');
+        setClientReportCompany(localStorage.getItem('reporterCompany') || '');
+        setClientReportTitle(localStorage.getItem('reporterTitle') || '');
+        setClientReportPhone(localStorage.getItem('reporterPhone') || '');
+        setClientReportSignature(localStorage.getItem('reporterSignature') || '');
+        
+        // Load URLs from domain if available
+        if (clientReportDomain) {
+          setClientReportAuthorizedUrl(clientReportDomain.authorizedUrl || '');
+          setClientReportInfringingUrls(clientReportDomain.infringingUrls || '');
+          setClientReportWorkDescription(clientReportDomain.workDescription || '');
+        } else {
+          setClientReportAuthorizedUrl(localStorage.getItem('reporterAuthorizedUrl') || '');
+          setClientReportInfringingUrls(localStorage.getItem('reporterInfringingUrls') || '');
+          setClientReportWorkDescription(localStorage.getItem('reporterWorkDescription') || '');
+        }
+      }
     }
   }, [clientReportDrawerVisible]);
 
@@ -154,7 +216,7 @@ const Dashboard = () => {
       const data = await domainsApi.list();
       setDomains(data);
     } catch (error) {
-      message.error('Failed to fetch domains');
+      message.error('Không thể tải danh sách domain');
     } finally {
       setLoading(false);
     }
@@ -165,7 +227,7 @@ const Dashboard = () => {
       const data = await reportServicesApi.list();
       setReportServices(data);
     } catch (error) {
-      message.error('Failed to fetch report services');
+      message.error('Không thể tải danh sách dịch vụ report');
     }
   };
 
@@ -174,7 +236,7 @@ const Dashboard = () => {
       const data = await templatesApi.list();
       setTemplates(data);
     } catch (error) {
-      message.error('Failed to fetch templates');
+      message.error('Không thể tải danh sách mẫu');
     }
   };
 
@@ -196,6 +258,55 @@ const Dashboard = () => {
     }
   };
 
+  const updateUserProfile = async (profileData) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await fetch(`${backendBaseUrl}/api/users/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(profileData),
+      });
+
+      if (response.ok) {
+        console.log('Profile updated successfully');
+      }
+    } catch (error) {
+      console.error('Failed to update profile:', error);
+    }
+  };
+
+  const updateDomainUrls = async (domainId, urls) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await fetch(`${backendBaseUrl}/api/domains/${domainId}/urls`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(urls),
+      });
+
+      if (response.ok) {
+        console.log('Domain URLs updated successfully');
+        // Refresh domains list to get updated data
+        await fetchDomains();
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Failed to update domain URLs:', error);
+      return false;
+    }
+  };
+
   const handleCreateAccount = async () => {
     try {
       const values = await accountForm.validateFields();
@@ -206,27 +317,27 @@ const Dashboard = () => {
       fetchAccounts();
     } catch (e) {
       if (e?.errorFields) return;
-      message.error(e.response?.data?.message || 'Failed to create account');
+      message.error(e.response?.data?.message || 'Không thể tạo tài khoản');
     }
   };
 
   const handleDeleteAccount = async (id) => {
     try {
       await accountsApi.remove(id);
-      message.success('Deleted');
+      message.success('Đã xóa');
       fetchAccounts();
     } catch {
-      message.error('Failed to delete account');
+      message.error('Không thể xóa tài khoản');
     }
   };
 
   const handleUpdateAccountStatus = async (id, status) => {
     try {
       await accountsApi.update(id, { status });
-      message.success('Updated');
+      message.success('Đã cập nhật');
       fetchAccounts();
     } catch {
-      message.error('Failed to update');
+      message.error('Không thể cập nhật');
     }
   };
 
@@ -234,7 +345,7 @@ const Dashboard = () => {
     try {
       const data = await accountsApi.prepareSession(id);
       if (data.ok) {
-        message.success('Login success');
+        message.success('Đăng nhập thành công');
       } else {
         message.warning(
           `Login not ready (${data.status || 'UNKNOWN'})${data.reason ? `: ${data.reason}` : ''}`,
@@ -242,7 +353,7 @@ const Dashboard = () => {
       }
       fetchAccounts();
     } catch (e) {
-      message.error(e.response?.data?.message || 'Failed to prepare session');
+      message.error(e.response?.data?.message || 'Không thể chuẩn bị phiên đăng nhập');
     }
   };
 
@@ -269,7 +380,7 @@ const Dashboard = () => {
       const data = await reportLogsApi.domainLogs(domainId);
       setReportLogs(data);
     } catch (error) {
-      message.error('Failed to fetch logs');
+      message.error('Không thể tải nhật ký');
     }
   };
 
@@ -294,12 +405,12 @@ const Dashboard = () => {
             ?.replaceAll('{domain}', values.domain) || values.reason;
       }
       await domainsApi.create(values);
-      message.success('Domain added successfully');
+      message.success('Đã thêm domain thành công');
       setModalVisible(false);
       form.resetFields();
       fetchDomains();
     } catch (error) {
-      message.error(error.response?.data?.message || 'Failed to add domain');
+      message.error(error.response?.data?.message || 'Không thể thêm domain');
     }
   };
 
@@ -315,7 +426,7 @@ const Dashboard = () => {
       bulkForm.resetFields();
       fetchDomains();
     } catch (error) {
-      message.error(error.response?.data?.message || 'Failed to import domains');
+      message.error(error.response?.data?.message || 'Không thể nhập danh sách domain');
     }
   };
 
@@ -342,59 +453,59 @@ const Dashboard = () => {
           name: values.name,
           description: values.description,
         });
-        message.success('Template updated successfully');
+        message.success('Đã cập nhật mẫu thành công');
       } else {
         await templatesApi.create(values);
-        message.success('Template created successfully');
+        message.success('Đã tạo mẫu thành công');
       }
       setTemplateModalVisible(false);
       setEditingTemplate(null);
       templateForm.resetFields();
       fetchTemplates();
     } catch (error) {
-      message.error(error.response?.data?.message || 'Failed to save template');
+      message.error(error.response?.data?.message || 'Không thể lưu mẫu');
     }
   };
 
   const handleDeleteTemplate = async (id) => {
     try {
       await templatesApi.remove(id);
-      message.success('Template deleted successfully');
+      message.success('Đã xóa mẫu thành công');
       fetchTemplates();
     } catch (error) {
-      message.error(error.response?.data?.message || 'Failed to delete template');
+      message.error(error.response?.data?.message || 'Không thể xóa mẫu');
     }
   };
 
   const handleAddProxy = async (values) => {
     try {
       await proxiesApi.create(values);
-      message.success('Proxy added successfully');
+      message.success('Đã thêm proxy thành công');
       setProxyModalVisible(false);
       proxyForm.resetFields();
       fetchProxies();
     } catch (error) {
-      message.error(error.response?.data?.message || 'Failed to add proxy');
+      message.error(error.response?.data?.message || 'Không thể thêm proxy');
     }
   };
 
   const handleDeleteProxy = async (id) => {
     try {
       await proxiesApi.remove(id);
-      message.success('Proxy deleted successfully');
+      message.success('Đã xóa proxy thành công');
       fetchProxies();
     } catch (error) {
-      message.error('Failed to delete proxy');
+      message.error('Không thể xóa proxy');
     }
   };
 
   const handleDelete = async (id) => {
     try {
       await domainsApi.remove(id);
-      message.success('Domain deleted successfully');
+      message.success('Đã xóa domain thành công');
       fetchDomains();
     } catch (error) {
-      message.error('Failed to delete domain');
+      message.error('Không thể xóa domain');
     }
   };
 
@@ -463,11 +574,11 @@ const Dashboard = () => {
         }
         message.success(msg, 5);
       } else {
-        message.error(result.error || 'Failed to open browser');
+        message.error(result.error || 'Không thể mở trình duyệt');
       }
     } catch (error) {
       message.destroy('puppeteer');
-      message.error('Failed to open browser with Puppeteer');
+      message.error('Không thể mở trình duyệt với Puppeteer');
       console.error(error);
     }
   };
@@ -503,7 +614,7 @@ const Dashboard = () => {
   const handleReportDomain = async (domainRecord) => {
     try {
       if (!reportServices.length) {
-        message.error('No report services available');
+        message.error('Không có dịch vụ report nào khả dụng');
         return;
       }
       setClientReportDomain(domainRecord);
@@ -523,7 +634,7 @@ const Dashboard = () => {
       
       setClientReportDrawerVisible(true);
     } catch (error) {
-      message.error(error.response?.data?.message || 'Failed to queue reports');
+      message.error(error.response?.data?.message || 'Không thể tạo hàng đợi report');
     }
   };
 
@@ -540,7 +651,7 @@ const Dashboard = () => {
       fetchDomains();
       fetchQueueStats();
     } catch (error) {
-      message.error(error.response?.data?.message || 'Failed to reset domain');
+      message.error(error.response?.data?.message || 'Không thể reset domain');
     }
   };
 
@@ -551,7 +662,7 @@ const Dashboard = () => {
       fetchDomains();
       fetchQueueStats();
     } catch (error) {
-      message.error(error.response?.data?.message || 'Failed to queue reports');
+      message.error(error.response?.data?.message || 'Không thể tạo hàng đợi report');
     }
   };
 
@@ -561,7 +672,7 @@ const Dashboard = () => {
       message.success(data.message);
       fetchQueueStats();
     } catch (error) {
-      message.error('Failed to pause queue');
+      message.error('Không thể tạm dừng hàng đợi');
     }
   };
 
@@ -571,7 +682,7 @@ const Dashboard = () => {
       message.success(data.message);
       fetchQueueStats();
     } catch (error) {
-      message.error('Failed to resume queue');
+      message.error('Không thể tiếp tục hàng đợi');
     }
   };
 
@@ -581,7 +692,7 @@ const Dashboard = () => {
       message.success(data.message);
       fetchQueueStats();
     } catch (error) {
-      message.error('Failed to clean queue');
+      message.error('Không thể xóa hàng đợi');
     }
   };
 
@@ -624,32 +735,40 @@ const Dashboard = () => {
 
   const domainColumns = [
     {
-      title: 'Domain',
+      title: 'Tên miền',
       dataIndex: 'domain',
       key: 'domain',
       width: '20%',
       render: (text) => <Text strong>{text}</Text>,
     },
     {
-      title: 'Reason',
+      title: 'Lý do',
       dataIndex: 'reason',
       key: 'reason',
       width: '25%',
       ellipsis: true,
     },
     {
-      title: 'Status',
+      title: 'Trạng thái',
       dataIndex: 'status',
       key: 'status',
       width: '10%',
-      render: (status) => (
-        <Tag color={getStatusColor(status)}>
-          {status.toUpperCase()}
-        </Tag>
-      ),
+      render: (status) => {
+        const statusMap = {
+          pending: 'CHỜ XỬ LÝ',
+          processing: 'ĐANG XỬ LÝ',
+          reported: 'ĐÃ REPORT',
+          failed: 'THẤT BẠI',
+        };
+        return (
+          <Tag color={getStatusColor(status)}>
+            {statusMap[status] || status.toUpperCase()}
+          </Tag>
+        );
+      },
     },
     {
-      title: 'Progress',
+      title: 'Tiến độ',
       key: 'progress',
       width: '10%',
       render: (_, record) => {
@@ -663,7 +782,7 @@ const Dashboard = () => {
       },
     },
     {
-      title: 'Actions',
+      title: 'Thao tác',
       key: 'actions',
       width: '35%',
       render: (_, record) => (
@@ -675,33 +794,33 @@ const Dashboard = () => {
             onClick={() => handleReportDomain(record)}
             disabled={record.status === 'processing'}
           >
-            Report All
+            Report tất cả
           </Button>
           <Button
             size="small"
             icon={<HistoryOutlined />}
             onClick={() => handleViewLogs(record)}
           >
-            Logs
+            Nhật ký
           </Button>
           <Popconfirm
             title="Reset domain này? Sẽ xoá logs và đưa status về PENDING."
             onConfirm={() => handleResetDomain(record)}
-            okText="Yes"
-            cancelText="No"
+            okText="Có"
+            cancelText="Không"
           >
             <Button size="small" icon={<ClearOutlined />}>
-              Reset
+              Đặt lại
             </Button>
           </Popconfirm>
           <Popconfirm
-            title="Delete this domain?"
+            title="Xóa domain này?"
             onConfirm={() => handleDelete(record._id)}
-            okText="Yes"
-            cancelText="No"
+            okText="Có"
+            cancelText="Không"
           >
             <Button size="small" danger icon={<DeleteOutlined />}>
-              Delete
+              Xóa
             </Button>
           </Popconfirm>
         </Space>
@@ -711,23 +830,23 @@ const Dashboard = () => {
 
   const proxyColumns = [
     {
-      title: 'Host',
+      title: 'Máy chủ',
       dataIndex: 'host',
       key: 'host',
     },
     {
-      title: 'Port',
+      title: 'Cổng',
       dataIndex: 'port',
       key: 'port',
     },
     {
-      title: 'Type',
+      title: 'Loại',
       dataIndex: 'type',
       key: 'type',
       render: (type) => <Tag>{type.toUpperCase()}</Tag>,
     },
     {
-      title: 'Status',
+      title: 'Trạng thái',
       dataIndex: 'status',
       key: 'status',
       render: (status) => (
@@ -738,27 +857,27 @@ const Dashboard = () => {
       ),
     },
     {
-      title: 'Usage',
+      title: 'Sử dụng',
       dataIndex: 'useCount',
       key: 'useCount',
       render: (count, record) => (
         <Text>
-          {count} <Text type="secondary">({record.failCount} fails)</Text>
+          {count} <Text type="secondary">({record.failCount} lỗi)</Text>
         </Text>
       ),
     },
     {
-      title: 'Actions',
+      title: 'Thao tác',
       key: 'actions',
       render: (_, record) => (
         <Popconfirm
-          title="Delete this proxy?"
+          title="Xóa proxy này?"
           onConfirm={() => handleDeleteProxy(record._id)}
-          okText="Yes"
-          cancelText="No"
+          okText="Có"
+          cancelText="Không"
         >
           <Button size="small" danger icon={<DeleteOutlined />}>
-            Delete
+            Xóa
           </Button>
         </Popconfirm>
       ),
@@ -767,42 +886,42 @@ const Dashboard = () => {
 
   const templateColumns = [
     {
-      title: 'Key',
+      title: 'Mã',
       dataIndex: 'id',
       key: 'id',
       width: '18%',
       render: (text) => <Text code>{text}</Text>,
     },
     {
-      title: 'Name',
+      title: 'Tên',
       dataIndex: 'name',
       key: 'name',
       width: '22%',
       render: (text) => <Text strong>{text}</Text>,
     },
     {
-      title: 'Description',
+      title: 'Mô tả',
       dataIndex: 'description',
       key: 'description',
       ellipsis: true,
     },
     {
-      title: 'Actions',
+      title: 'Thao tác',
       key: 'actions',
       width: 200,
       render: (_, record) => (
         <Space size="small">
           <Button size="small" icon={<EditOutlined />} onClick={() => openEditTemplateModal(record)}>
-            Edit
+            Sửa
           </Button>
           <Popconfirm
-            title="Delete this template?"
+            title="Xóa template này?"
             onConfirm={() => handleDeleteTemplate(record.id)}
-            okText="Yes"
-            cancelText="No"
+            okText="Có"
+            cancelText="Không"
           >
             <Button size="small" danger icon={<DeleteOutlined />}>
-              Delete
+              Xóa
             </Button>
           </Popconfirm>
         </Space>
@@ -820,36 +939,36 @@ const Dashboard = () => {
         alignItems: 'center',
       }}>
         <Title level={3} style={{ margin: 0, color: '#fff' }}>
-          <DashboardOutlined /> Domain Abuse Reporter Pro
+          <DashboardOutlined /> Hệ thống Report Domain
         </Title>
         <Space>
-          <Text style={{ color: '#fff' }}>Welcome, <strong>{user.username}</strong></Text>
+          <Text style={{ color: '#fff' }}>Xin chào, <strong>{user.username}</strong></Text>
           <Button icon={<LogoutOutlined />} onClick={handleLogout}>
-            Logout
+            Đăng xuất
           </Button>
         </Space>
       </Header>
       
       <Layout>
         <Sider width={280} style={{ background: '#fff', padding: '16px' }}>
-          <Card title="Statistics" size="small" style={{ marginBottom: 16 }}>
-            <Statistic title="Total Reports" value={stats.total || 0} />
-            <Statistic title="Success" value={stats.success || 0} valueStyle={{ color: '#3f8600' }} />
-            <Statistic title="Failed" value={stats.failed || 0} valueStyle={{ color: '#cf1322' }} />
+          <Card title="Thống kê" size="small" style={{ marginBottom: 16 }}>
+            <Statistic title="Tổng số report" value={stats.total || 0} />
+            <Statistic title="Thành công" value={stats.success || 0} valueStyle={{ color: '#3f8600' }} />
+            <Statistic title="Thất bại" value={stats.failed || 0} valueStyle={{ color: '#cf1322' }} />
           </Card>
 
-          <Card title="Queue Control" size="small" style={{ marginBottom: 16 }}>
+          <Card title="Điều khiển hàng đợi" size="small" style={{ marginBottom: 16 }}>
             <Space direction="vertical" style={{ width: '100%' }} size="small">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text>Status:</Text>
+                <Text>Trạng thái:</Text>
                 <Tag color={queueStats.isPaused ? 'red' : 'green'}>
-                  {queueStats.isPaused ? 'PAUSED' : 'RUNNING'}
+                  {queueStats.isPaused ? 'TẠM DỪNG' : 'ĐANG CHẠY'}
                 </Tag>
               </div>
-              <Text>Active: <strong>{queueStats.active || 0}</strong></Text>
-              <Text>Waiting: <strong>{queueStats.waiting || 0}</strong></Text>
-              <Text>Completed: <strong>{queueStats.completed || 0}</strong></Text>
-              <Text>Failed: <strong>{queueStats.failed || 0}</strong></Text>
+              <Text>Đang chạy: <strong>{queueStats.active || 0}</strong></Text>
+              <Text>Đang chờ: <strong>{queueStats.waiting || 0}</strong></Text>
+              <Text>Hoàn thành: <strong>{queueStats.completed || 0}</strong></Text>
+              <Text>Thất bại: <strong>{queueStats.failed || 0}</strong></Text>
               
               <Space style={{ width: '100%' }}>
                 {queueStats.isPaused ? (
@@ -860,7 +979,7 @@ const Dashboard = () => {
                     type="primary"
                     block
                   >
-                    Resume
+                    Tiếp tục
                   </Button>
                 ) : (
                   <Button 
@@ -870,7 +989,7 @@ const Dashboard = () => {
                     danger
                     block
                   >
-                    Pause
+                    Tạm dừng
                   </Button>
                 )}
                 <Button 
@@ -878,34 +997,34 @@ const Dashboard = () => {
                   icon={<ClearOutlined />}
                   onClick={handleCleanQueue}
                 >
-                  Clean
+                  Xóa
                 </Button>
               </Space>
             </Space>
           </Card>
 
-          <Card title="Proxy Status" size="small" style={{ marginBottom: 16 }}>
+          <Card title="Trạng thái Proxy" size="small" style={{ marginBottom: 16 }}>
             <Space direction="vertical" style={{ width: '100%' }} size="small">
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Text>Active:</Text>
+                <Text>Hoạt động:</Text>
                 <Text strong style={{ color: '#3f8600' }}>
                   {proxies.filter((p) => p.status === 'active').length}
                 </Text>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Text>Banned:</Text>
+                <Text>Bị cấm:</Text>
                 <Text strong style={{ color: '#cf1322' }}>
                   {proxies.filter((p) => p.status === 'banned').length}
                 </Text>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Text>Total:</Text>
+                <Text>Tổng:</Text>
                 <Text strong>{proxies.length}</Text>
               </div>
             </Space>
           </Card>
 
-          <Card title="Report Services" size="small" style={{ marginBottom: 16 }}>
+          <Card title="Dịch vụ Report" size="small" style={{ marginBottom: 16 }}>
             <Space direction="vertical" style={{ width: '100%' }}>
               {reportServices.map((service) => (
                 <Button
@@ -921,7 +1040,7 @@ const Dashboard = () => {
             </Space>
           </Card>
 
-          <Card title="Active Accounts" size="small">
+          <Card title="Tài khoản hoạt động" size="small">
             <Text>{accounts.filter((a) => a.status === 'ACTIVE').length} / {accounts.length}</Text>
           </Card>
         </Sider>
@@ -932,25 +1051,25 @@ const Dashboard = () => {
             items={[
               {
                 key: 'domains',
-                label: 'Domain Management',
+                label: 'Quản lý Domain',
                 children: (
                   <Card>
                     <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Title level={4} style={{ margin: 0 }}>Domains</Title>
+                      <Title level={4} style={{ margin: 0 }}>Danh sách Domain</Title>
                       <Space>
                         <Button
                           type="dashed"
                           icon={<UploadOutlined />}
                           onClick={() => setBulkModalVisible(true)}
                         >
-                          Bulk Import
+                          Nhập hàng loạt
                         </Button>
                         <Button
                           type="primary"
                           icon={<PlusOutlined />}
                           onClick={() => setModalVisible(true)}
                         >
-                          Add Domain
+                          Thêm Domain
                         </Button>
                         <Button
                           type="primary"
@@ -960,7 +1079,7 @@ const Dashboard = () => {
                           size="large"
                           disabled={queueStats.isPaused}
                         >
-                          Report All Pending (Ctrl+Enter)
+                          Report tất cả (Ctrl+Enter)
                         </Button>
                       </Space>
                     </div>
@@ -980,19 +1099,19 @@ const Dashboard = () => {
                 key: 'proxies',
                 label: (
                   <span>
-                    <ApiOutlined /> Proxy Management
+                    <ApiOutlined /> Quản lý Proxy
                   </span>
                 ),
                 children: (
                   <Card>
                     <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Title level={4} style={{ margin: 0 }}>Proxies</Title>
+                      <Title level={4} style={{ margin: 0 }}>Danh sách Proxy</Title>
                       <Button
                         type="primary"
                         icon={<PlusOutlined />}
                         onClick={() => setProxyModalVisible(true)}
                       >
-                        Add Proxy
+                        Thêm Proxy
                       </Button>
                     </div>
                     
@@ -1009,15 +1128,15 @@ const Dashboard = () => {
                 key: 'templates',
                 label: (
                   <span>
-                    <FileTextOutlined /> Templates
+                    <FileTextOutlined /> Mẫu nội dung
                   </span>
                 ),
                 children: (
                   <Card>
                     <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Title level={4} style={{ margin: 0 }}>Templates</Title>
+                      <Title level={4} style={{ margin: 0 }}>Mẫu nội dung</Title>
                       <Button type="primary" icon={<PlusOutlined />} onClick={openCreateTemplateModal}>
-                        Add Template
+                        Thêm mẫu
                       </Button>
                     </div>
                     <Table columns={templateColumns} dataSource={templates} rowKey="id" pagination={{ pageSize: 15 }} />
@@ -1026,13 +1145,13 @@ const Dashboard = () => {
               },
               {
                 key: 'accounts',
-                label: 'Accounts',
+                label: 'Tài khoản Gmail',
                 children: (
                   <Card>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                      <Title level={4} style={{ margin: 0 }}>Gmail Accounts</Title>
+                      <Title level={4} style={{ margin: 0 }}>Tài khoản Gmail</Title>
                       <Button type="primary" onClick={() => setAccountModalVisible(true)}>
-                        Add Account
+                        Thêm tài khoản
                       </Button>
                     </div>
                     <Table
@@ -1040,12 +1159,12 @@ const Dashboard = () => {
                       dataSource={accounts}
                       columns={[
                         { title: 'Email', dataIndex: 'email' },
-                        { title: 'Provider', dataIndex: 'provider', render: (v) => v || 'google' },
-                        { title: 'Status', dataIndex: 'status', render: (v) => <Tag color={getStatusColor(v)}>{v}</Tag> },
-                        { title: 'Last Used', dataIndex: 'lastUsedAt', render: (v) => (v ? new Date(v).toLocaleString() : '-') },
-                        { title: 'Count', dataIndex: 'reportCount' },
+                        { title: 'Nhà cung cấp', dataIndex: 'provider', render: (v) => v || 'google' },
+                        { title: 'Trạng thái', dataIndex: 'status', render: (v) => <Tag color={getStatusColor(v)}>{v}</Tag> },
+                        { title: 'Dùng lần cuối', dataIndex: 'lastUsedAt', render: (v) => (v ? new Date(v).toLocaleString() : '-') },
+                        { title: 'Số lần dùng', dataIndex: 'reportCount' },
                         {
-                          title: 'Actions',
+                          title: 'Thao tác',
                           render: (_, r) => (
                             <Space>
                               <Select
@@ -1053,17 +1172,17 @@ const Dashboard = () => {
                                 value={r.status}
                                 onChange={(val) => handleUpdateAccountStatus(r._id, val)}
                                 options={[
-                                  { value: 'ACTIVE', label: 'ACTIVE' },
-                                  { value: 'NEED_RELOGIN', label: 'NEED_RELOGIN' },
-                                  { value: 'INVALID', label: 'INVALID' },
-                                  { value: 'LOCKED', label: 'LOCKED' },
+                                  { value: 'ACTIVE', label: 'HOẠT ĐỘNG' },
+                                  { value: 'NEED_RELOGIN', label: 'CẦN LOGIN LẠI' },
+                                  { value: 'INVALID', label: 'KHÔNG HỢP LỆ' },
+                                  { value: 'LOCKED', label: 'BỊ KHÓA' },
                                 ]}
                               />
                               <Button size="small" type="primary" onClick={() => handlePrepareAccountSession(r._id)}>
-                                Login
+                                Đăng nhập
                               </Button>
-                              <Popconfirm title="Delete account?" onConfirm={() => handleDeleteAccount(r._id)}>
-                                <Button size="small" danger>Delete</Button>
+                              <Popconfirm title="Xóa tài khoản?" onConfirm={() => handleDeleteAccount(r._id)} okText="Có" cancelText="Không">
+                                <Button size="small" danger>Xóa</Button>
                               </Popconfirm>
                             </Space>
                           ),
@@ -1080,20 +1199,21 @@ const Dashboard = () => {
       </Layout>
 
       <Modal
-        title="Add Gmail Account"
+        title="Thêm tài khoản Gmail"
         open={accountModalVisible}
         onCancel={() => {
           setAccountModalVisible(false);
           accountForm.resetFields();
         }}
         onOk={handleCreateAccount}
-        okText="Create"
+        okText="Tạo"
+        cancelText="Hủy"
       >
         <Form layout="vertical" form={accountForm}>
-          <Form.Item name="email" label="Email" rules={[{ required: true, message: 'Email is required' }]}>
+          <Form.Item name="email" label="Email" rules={[{ required: true, message: 'Vui lòng nhập email' }]}>
             <Input placeholder="name@gmail.com" />
           </Form.Item>
-          <Form.Item name="password" label="Password (Optional)">
+          <Form.Item name="password" label="Mật khẩu (tùy chọn)">
             <Input.Password />
           </Form.Item>
           <Form.Item name="provider" initialValue="google" hidden>
@@ -1103,7 +1223,7 @@ const Dashboard = () => {
       </Modal>
 
       <Modal
-        title="Add New Domain"
+        title="Thêm Domain mới"
         open={modalVisible}
         onCancel={() => {
           setModalVisible(false);
@@ -1115,14 +1235,14 @@ const Dashboard = () => {
         <Form form={form} layout="vertical" onFinish={handleAddDomain}>
           <Form.Item
             name="domain"
-            label="Domain"
-            rules={[{ required: true, message: 'Please input domain name!' }]}
+            label="Tên miền"
+            rules={[{ required: true, message: 'Vui lòng nhập tên miền!' }]}
           >
             <Input placeholder="example.com" />
           </Form.Item>
 
-          <Form.Item name="template" label="Template (Optional)">
-            <Select placeholder="Select a template" allowClear>
+          <Form.Item name="template" label="Mẫu nội dung (tùy chọn)">
+            <Select placeholder="Chọn mẫu" allowClear>
               {templates.map((t) => (
                 <Option key={t.id} value={t.id}>{t.name}</Option>
               ))}
@@ -1131,10 +1251,10 @@ const Dashboard = () => {
 
           <Form.Item
             name="reason"
-            label="Reason"
-            rules={[{ required: true, message: 'Please input reason!' }]}
+            label="Lý do báo cáo"
+            rules={[{ required: true, message: 'Vui lòng nhập lý do!' }]}
           >
-            <TextArea rows={4} placeholder="Describe the abuse reason..." />
+            <TextArea rows={4} placeholder="Mô tả lý do báo cáo vi phạm..." />
           </Form.Item>
 
           <Form.Item>
@@ -1143,10 +1263,10 @@ const Dashboard = () => {
                 setModalVisible(false);
                 form.resetFields();
               }}>
-                Cancel
+                Hủy
               </Button>
               <Button type="primary" htmlType="submit">
-                Add Domain
+                Thêm Domain
               </Button>
             </Space>
           </Form.Item>
@@ -1154,7 +1274,7 @@ const Dashboard = () => {
       </Modal>
 
       <Modal
-        title="Bulk Import Domains"
+        title="Nhập hàng loạt Domain"
         open={bulkModalVisible}
         onCancel={() => {
           setBulkModalVisible(false);
@@ -1166,25 +1286,25 @@ const Dashboard = () => {
         <Form form={bulkForm} layout="vertical" onFinish={handleBulkImport}>
           <Form.Item
             name="domains"
-            label="Domains (one per line or comma-separated)"
-            rules={[{ required: true, message: 'Please input domains!' }]}
+            label="Danh sách Domain (mỗi dòng một domain hoặc phân cách bằng dấu phẩy)"
+            rules={[{ required: true, message: 'Vui lòng nhập danh sách domain!' }]}
           >
             <TextArea 
               rows={8} 
-              placeholder="example1.com&#10;example2.com&#10;example3.com&#10;&#10;or&#10;&#10;example1.com, example2.com, example3.com" 
+              placeholder="example1.com&#10;example2.com&#10;example3.com&#10;&#10;hoặc&#10;&#10;example1.com, example2.com, example3.com" 
             />
           </Form.Item>
 
-          <Form.Item name="template" label="Template (Optional)">
-            <Select placeholder="Select a template" allowClear>
+          <Form.Item name="template" label="Mẫu nội dung (tùy chọn)">
+            <Select placeholder="Chọn mẫu" allowClear>
               {templates.map((t) => (
                 <Option key={t.id} value={t.id}>{t.name}</Option>
               ))}
             </Select>
           </Form.Item>
 
-          <Form.Item name="reason" label="Reason (Optional - will use template if selected)">
-            <TextArea rows={3} placeholder="Default reason for all domains..." />
+          <Form.Item name="reason" label="Lý do (Tùy chọn - sẽ dùng mẫu nếu đã chọn)">
+            <TextArea rows={3} placeholder="Lý do mặc định cho tất cả domain..." />
           </Form.Item>
 
           <Form.Item>
@@ -1193,10 +1313,10 @@ const Dashboard = () => {
                 setBulkModalVisible(false);
                 bulkForm.resetFields();
               }}>
-                Cancel
+                Hủy
               </Button>
               <Button type="primary" htmlType="submit" icon={<UploadOutlined />}>
-                Import
+                Nhập
               </Button>
             </Space>
           </Form.Item>
@@ -1204,7 +1324,7 @@ const Dashboard = () => {
       </Modal>
 
       <Modal
-        title="Add New Proxy"
+        title="Thêm Proxy mới"
         open={proxyModalVisible}
         onCancel={() => {
           setProxyModalVisible(false);
@@ -1216,21 +1336,21 @@ const Dashboard = () => {
         <Form form={proxyForm} layout="vertical" onFinish={handleAddProxy}>
           <Form.Item
             name="host"
-            label="Host"
-            rules={[{ required: true, message: 'Please input proxy host!' }]}
+            label="Máy chủ"
+            rules={[{ required: true, message: 'Vui lòng nhập địa chỉ proxy!' }]}
           >
             <Input placeholder="185.199.229.156" />
           </Form.Item>
 
           <Form.Item
             name="port"
-            label="Port"
-            rules={[{ required: true, message: 'Please input proxy port!' }]}
+            label="Cổng"
+            rules={[{ required: true, message: 'Vui lòng nhập cổng proxy!' }]}
           >
             <InputNumber placeholder="8080" style={{ width: '100%' }} />
           </Form.Item>
 
-          <Form.Item name="type" label="Type" initialValue="http">
+          <Form.Item name="type" label="Loại" initialValue="http">
             <Select>
               <Option value="http">HTTP</Option>
               <Option value="https">HTTPS</Option>
@@ -1239,11 +1359,11 @@ const Dashboard = () => {
             </Select>
           </Form.Item>
 
-          <Form.Item name="username" label="Username (Optional)">
+          <Form.Item name="username" label="Tên đăng nhập (tùy chọn)">
             <Input placeholder="proxyuser" />
           </Form.Item>
 
-          <Form.Item name="password" label="Password (Optional)">
+          <Form.Item name="password" label="Mật khẩu (tùy chọn)">
             <Input.Password placeholder="proxypass" />
           </Form.Item>
 
@@ -1253,10 +1373,10 @@ const Dashboard = () => {
                 setProxyModalVisible(false);
                 proxyForm.resetFields();
               }}>
-                Cancel
+                Hủy
               </Button>
               <Button type="primary" htmlType="submit">
-                Add Proxy
+                Thêm Proxy
               </Button>
             </Space>
           </Form.Item>
@@ -1264,7 +1384,7 @@ const Dashboard = () => {
       </Modal>
 
       <Modal
-        title={editingTemplate ? 'Edit Template' : 'Add Template'}
+        title={editingTemplate ? 'Chỉnh sửa mẫu' : 'Thêm mẫu'}
         open={templateModalVisible}
         onCancel={() => {
           setTemplateModalVisible(false);
@@ -1276,25 +1396,25 @@ const Dashboard = () => {
       >
         <Form form={templateForm} layout="vertical" onFinish={handleSaveTemplate}>
           {!editingTemplate && (
-            <Form.Item name="key" label="Key (Optional)">
+            <Form.Item name="key" label="Mã (tùy chọn)">
               <Input placeholder="abuse-generic" />
             </Form.Item>
           )}
 
           <Form.Item
             name="name"
-            label="Name"
-            rules={[{ required: true, message: 'Please input template name!' }]}
+            label="Tên mẫu"
+            rules={[{ required: true, message: 'Vui lòng nhập tên mẫu!' }]}
           >
-            <Input placeholder="Generic Abuse Report" />
+            <Input placeholder="Báo cáo vi phạm chung" />
           </Form.Item>
 
           <Form.Item
             name="description"
-            label="Description"
-            rules={[{ required: true, message: 'Please input template description!' }]}
+            label="Nội dung"
+            rules={[{ required: true, message: 'Vui lòng nhập nội dung mẫu!' }]}
           >
-            <TextArea rows={8} placeholder="Write the report reason/content. Use {domain} or {{domain}} placeholders." />
+            <TextArea rows={8} placeholder="Viết nội dung báo cáo. Sử dụng {domain} hoặc {{domain}} làm biến thay thế." />
           </Form.Item>
 
           <Form.Item>
@@ -1306,10 +1426,10 @@ const Dashboard = () => {
                   templateForm.resetFields();
                 }}
               >
-                Cancel
+                Hủy
               </Button>
               <Button type="primary" htmlType="submit">
-                {editingTemplate ? 'Save' : 'Create'}
+                {editingTemplate ? 'Lưu' : 'Tạo'}
               </Button>
             </Space>
           </Form.Item>
@@ -1317,7 +1437,7 @@ const Dashboard = () => {
       </Modal>
 
       <Drawer
-        title={`Client Report - ${clientReportDomain?.domain || ''}`}
+        title={`Thông tin báo cáo - ${clientReportDomain?.domain || ''}`}
         placement="right"
         onClose={() => setClientReportDrawerVisible(false)}
         open={clientReportDrawerVisible}
@@ -1339,7 +1459,7 @@ const Dashboard = () => {
                   </div>
                 </div>
                 <div>
-                  <Text strong>Email (optional):</Text>
+                  <Text strong>Email (tùy chọn):</Text>
                   <div style={{ marginTop: 6 }}>
                     <Input
                       value={clientReportEmail}
@@ -1349,11 +1469,14 @@ const Dashboard = () => {
                         setClientReportEmail(v);
                         localStorage.setItem('reporterEmail', v);
                       }}
+                      onBlur={() => {
+                        // Note: email is already in user account, this is just for display
+                      }}
                     />
                   </div>
                 </div>
                 <div>
-                  <Text strong>Name (optional):</Text>
+                  <Text strong>Tên người report (tùy chọn):</Text>
                   <div style={{ marginTop: 6 }}>
                     <Input
                       value={clientReportName}
@@ -1363,67 +1486,106 @@ const Dashboard = () => {
                         setClientReportName(v);
                         localStorage.setItem('reporterName', v);
                       }}
+                      onBlur={() => {
+                        updateUserProfile({ name: clientReportName });
+                      }}
                     />
                   </div>
                 </div>
                 <div>
-                  <Text strong>Company (optional):</Text>
+                  <Text strong>Công ty (tùy chọn):</Text>
                   <div style={{ marginTop: 6 }}>
                     <Input
                       value={clientReportCompany}
-                      placeholder="Company (DMCA/Cloudflare nếu cần)"
+                      placeholder="Công ty (DMCA/Cloudflare nếu cần)"
                       onChange={(e) => {
                         const v = e.target.value;
                         setClientReportCompany(v);
                         localStorage.setItem('reporterCompany', v);
                       }}
+                      onBlur={() => {
+                        updateUserProfile({ company: clientReportCompany });
+                      }}
                     />
                   </div>
                 </div>
                 <div>
-                  <Text strong>Title / Role (optional):</Text>
+                  <Text strong>Chức vụ (tùy chọn):</Text>
                   <div style={{ marginTop: 6 }}>
                     <Input
                       value={clientReportTitle}
-                      placeholder="Title/Role (Cloudflare nếu cần)"
+                      placeholder="Chức vụ (Cloudflare nếu cần)"
                       onChange={(e) => {
                         const v = e.target.value;
                         setClientReportTitle(v);
                         localStorage.setItem('reporterTitle', v);
                       }}
+                      onBlur={() => {
+                        updateUserProfile({ title: clientReportTitle });
+                      }}
                     />
                   </div>
                 </div>
                 <div>
-                  <Text strong>Phone (optional):</Text>
+                  <Text strong>Số điện thoại (tùy chọn):</Text>
                   <div style={{ marginTop: 6 }}>
                     <Input
                       value={clientReportPhone}
-                      placeholder="Phone (Cloudflare nếu cần)"
+                      placeholder="Số điện thoại (Cloudflare nếu cần)"
                       onChange={(e) => {
                         const v = e.target.value;
                         setClientReportPhone(v);
                         localStorage.setItem('reporterPhone', v);
                       }}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Text strong>Signature (optional):</Text>
-                  <div style={{ marginTop: 6 }}>
-                    <Input
-                      value={clientReportSignature}
-                      placeholder="Signature (DMCA nếu cần)"
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setClientReportSignature(v);
-                        localStorage.setItem('reporterSignature', v);
+                      onBlur={() => {
+                        updateUserProfile({ phone: clientReportPhone });
                       }}
                     />
                   </div>
                 </div>
                 <div>
-                  <Text strong>Authorized URL (optional):</Text>
+                  <Text strong>Chữ ký (tùy chọn):</Text>
+                  <div style={{ marginTop: 6 }}>
+                    <Input
+                      value={clientReportSignature}
+                      placeholder="Chữ ký (DMCA nếu cần)"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setClientReportSignature(v);
+                        localStorage.setItem('reporterSignature', v);
+                      }}
+                      onBlur={() => {
+                        updateUserProfile({ signature: clientReportSignature });
+                      }}
+                    />
+                  </div>
+                </div>
+                
+                {/* Save Profile Button */}
+                <div style={{ marginTop: 16, marginBottom: 8 }}>
+                  <Button
+                    type="primary"
+                    icon={<SaveOutlined />}
+                    onClick={() => {
+                      updateUserProfile({
+                        name: clientReportName,
+                        company: clientReportCompany,
+                        phone: clientReportPhone,
+                        title: clientReportTitle,
+                        signature: clientReportSignature,
+                      });
+                      message.success('Đã lưu thông tin cá nhân!');
+                    }}
+                  >
+                    Lưu thông tin cá nhân
+                  </Button>
+                  <Text type="secondary" style={{ marginLeft: 12, fontSize: 12 }}>
+                    (Tự động lưu khi rời khỏi ô nhập)
+                  </Text>
+                </div>
+                
+                <div>
+                  <Text strong>URL hợp lệ (tùy chọn):</Text>
                   <div style={{ marginTop: 6 }}>
                     <Input
                       value={clientReportAuthorizedUrl}
@@ -1437,7 +1599,7 @@ const Dashboard = () => {
                   </div>
                 </div>
                 <div>
-                  <Text strong>Infringing URL(s) (optional):</Text>
+                  <Text strong>URL vi phạm (tùy chọn):</Text>
                   <div style={{ marginTop: 6 }}>
                     <TextArea
                       value={clientReportInfringingUrls}
@@ -1452,7 +1614,7 @@ const Dashboard = () => {
                   </div>
                 </div>
                 <div>
-                  <Text strong>Work description (optional):</Text>
+                  <Text strong>Mô tả tác phẩm (tùy chọn):</Text>
                   <div style={{ marginTop: 6 }}>
                     <TextArea
                       value={clientReportWorkDescription}
@@ -1466,12 +1628,44 @@ const Dashboard = () => {
                     />
                   </div>
                 </div>
+                
+                {/* Save URLs Button */}
+                <div style={{ marginTop: 16, marginBottom: 8 }}>
+                  <Button
+                    type="primary"
+                    icon={<SaveOutlined />}
+                    onClick={async () => {
+                      if (!clientReportDomain || !clientReportDomain._id) {
+                        message.warning('Chưa chọn domain');
+                        return;
+                      }
+                      
+                      const success = await updateDomainUrls(clientReportDomain._id, {
+                        authorizedUrl: clientReportAuthorizedUrl,
+                        infringingUrls: clientReportInfringingUrls,
+                        workDescription: clientReportWorkDescription,
+                      });
+                      
+                      if (success) {
+                        message.success('Đã lưu URLs vào domain!');
+                      } else {
+                        message.error('Lỗi khi lưu URLs');
+                      }
+                    }}
+                  >
+                    Lưu URLs vào Domain
+                  </Button>
+                  <Text type="secondary" style={{ marginLeft: 12, fontSize: 12 }}>
+                    (Lưu riêng cho từng domain)
+                  </Text>
+                </div>
+                
                 <div>
-                  <Text strong>Proxy (optional - for Puppeteer only):</Text>
+                  <Text strong>Proxy (tùy chọn - chỉ cho Puppeteer):</Text>
                   <div style={{ marginTop: 6 }}>
                     <Select
                       value={selectedProxyId}
-                      placeholder="No proxy (direct connection)"
+                      placeholder="Không dùng proxy (kết nối trực tiếp)"
                       style={{ width: '100%' }}
                       allowClear
                       onChange={(value) => {
@@ -1487,7 +1681,7 @@ const Dashboard = () => {
                         .filter((p) => p.status === 'active')
                         .map((proxy) => (
                           <Option key={proxy._id} value={proxy._id}>
-                            {proxy.host}:{proxy.port} ({proxy.type}) - Used: {proxy.useCount || 0} times
+                            {proxy.host}:{proxy.port} ({proxy.type}) - Đã dùng: {proxy.useCount || 0} lần
                           </Option>
                         ))}
                     </Select>
@@ -1495,7 +1689,7 @@ const Dashboard = () => {
                   {selectedProxyId && (
                     <div style={{ marginTop: 8 }}>
                       <Tag color="blue">
-                        Proxy selected: {proxies.find(p => p._id === selectedProxyId)?.host}:{proxies.find(p => p._id === selectedProxyId)?.port}
+                        Proxy đã chọn: {proxies.find(p => p._id === selectedProxyId)?.host}:{proxies.find(p => p._id === selectedProxyId)?.port}
                       </Tag>
                     </div>
                   )}
@@ -1506,7 +1700,7 @@ const Dashboard = () => {
               </Space>
             </Card>
 
-            <Card size="small" title="Services">
+            <Card size="small" title="Dịch vụ Report">
               <Space direction="vertical" style={{ width: '100%' }}>
                 <Space wrap>
                   <Button
@@ -1514,7 +1708,7 @@ const Dashboard = () => {
                     onClick={() => {
                       const activeServices = reportServices.filter((s) => s.active !== false);
                       if (activeServices.length === 0) {
-                        message.warning('Không có service active');
+                        message.warning('Không có dịch vụ nào đang hoạt động');
                         return;
                       }
                       
@@ -1576,7 +1770,7 @@ const Dashboard = () => {
                       }, 3000); // 3s chờ tabs load xong
                     }}
                   >
-                    Open All Services ({reportServices.filter((s) => s.active !== false).length})
+                    Mở tất cả dịch vụ ({reportServices.filter((s) => s.active !== false).length})
                   </Button>
                   <Button
                     onClick={() => {
@@ -1584,7 +1778,7 @@ const Dashboard = () => {
                       setClientReportDomain(null);
                     }}
                   >
-                    Close
+                    Đóng
                   </Button>
                 </Space>
 
@@ -1595,7 +1789,7 @@ const Dashboard = () => {
                   dataSource={reportServices.filter((s) => s.active !== false)}
                   columns={[
                     {
-                      title: 'Service',
+                      title: 'Dịch vụ',
                       dataIndex: 'name',
                       key: 'name',
                       render: (name) => (
@@ -1606,7 +1800,7 @@ const Dashboard = () => {
                       ),
                     },
                     {
-                      title: 'Open',
+                      title: 'Mở',
                       key: 'open',
                       width: 280,
                       render: (_, svc) => (
@@ -1641,7 +1835,7 @@ const Dashboard = () => {
       </Drawer>
 
       <Drawer
-        title={`Report Logs - ${selectedDomain?.domain}`}
+        title={`Nhật ký Report - ${selectedDomain?.domain}`}
         placement="right"
         onClose={() => setLogsDrawerVisible(false)}
         open={logsDrawerVisible}
@@ -1655,9 +1849,11 @@ const Dashboard = () => {
               color: log.status === 'success' ? 'green' : log.status === 'failed' ? 'red' : 'blue',
               children: (
                 <div>
-                  <Text strong>{log.serviceId?.name || 'Unknown Service'}</Text>
+                  <Text strong>{log.serviceId?.name || 'Dịch vụ không xác định'}</Text>
                   <br />
-                  <Tag color={getStatusColor(log.status)}>{log.status}</Tag>
+                  <Tag color={getStatusColor(log.status)}>
+                    {log.status === 'success' ? 'THÀNH CÔNG' : log.status === 'failed' ? 'THẤT BẠI' : log.status === 'processing' ? 'ĐANG XỬ LÝ' : log.status.toUpperCase()}
+                  </Tag>
                   {log.stage && (
                     <>
                       <Tag style={{ marginLeft: 8 }}>{log.stage}</Tag>
@@ -1682,7 +1878,7 @@ const Dashboard = () => {
                   )}
                   <br />
                   <Text type="secondary" style={{ fontSize: '12px' }}>
-                    {new Date(log.createdAt).toLocaleString()}
+                    {new Date(log.createdAt).toLocaleString('vi-VN')}
                   </Text>
                   {log.email && (
                     <>
@@ -1702,13 +1898,13 @@ const Dashboard = () => {
                     <>
                       <br />
                       <Text type="secondary">
-                        Screenshot:{' '}
+                        Ảnh chụp:{' '}
                         <a
                           href={`${backendBaseUrl}/${String(log.screenshot).replace(/^\//, '')}`}
                           target="_blank"
                           rel="noreferrer"
                         >
-                          View
+                          Xem
                         </a>
                       </Text>
                     </>
